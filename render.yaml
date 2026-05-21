@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: subscription-manager-api
+    runtime: node
+    region: oregon
+    plan: free
+    rootDir: apps/api
+    buildCommand: npm install && npm run build && npx prisma generate
+    startCommand: npm run start:prod
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+      # All other env vars must be set manually in the Render dashboard
+      # See apps/api/.env.example for the full list

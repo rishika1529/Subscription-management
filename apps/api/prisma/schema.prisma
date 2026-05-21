@@ -1,0 +1,373 @@
+// Prisma Schema for SubTrack Pro
+// Database: PostgreSQL (Supabase)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  EXPIRED
+  TRIAL
+  PAUSED
+}
+
+enum BillingCycle {
+  MONTHLY
+  YEARLY
+  QUARTERLY
+  WEEKLY
+  ONE_TIME
+}
+
+enum NotificationType {
+  RENEWAL_REMINDER
+  PAYMENT_SUCCESS
+  PAYMENT_FAILED
+  TRIAL_ENDING
+  AI_INSIGHT
+  SYSTEM
+}
+
+enum Currency {
+  USD
+  EUR
+  GBP
+  INR
+  CAD
+  AUD
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  username      String?   @unique
+  password      String?   // Nullable for OAuth users
+  firstName     String?
+  lastName      String?
+  avatar        String?
+  role          UserRole  @default(USER)
+  
+  // OAuth
+  googleId      String?   @unique
+  githubId      String?   @unique
+  
+  // Email verification
+  emailVerified Boolean   @default(false)
+  verificationToken String?
+  
+  // Password reset
+  resetToken    String?
+  resetTokenExpiry DateTime?
+  
+  // Preferences
+  currency      Currency  @default(USD)
+  timezone      String    @default("UTC")
+  theme         String    @default("dark")
+  
+  // Stripe
+  stripeCustomerId String? @unique
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastLoginAt   DateTime?
+  
+  // Relations
+  subscriptions Subscription[]
+  categories    Category[]
+  usageLogs     UsageLog[]
+  notifications Notification[]
+  aiChats       AIChat[]
+  sessions      Session[]
+  payments      Payment[]
+  reminders     Reminder[]
+  activityLogs  ActivityLog[]
+  
+  @@index([email])
+  @@index([googleId])
+  @@index([githubId])
+}
+
+model Session {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  refreshToken String  @unique
+  deviceInfo   Json?   // Browser, OS, IP
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  lastUsedAt   DateTime @default(now())
+  
+  @@index([userId])
+  @@index([refreshToken])
+}
+
+model Category {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  name        String
+  color       String   @default("#3B82F6")
+  icon        String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  subscriptions Subscription[]
+  
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+model Subscription {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  
+  // Service info
+  name        String
+  description String?
+  logo        String?
+  website     String?
+  
+  // Billing
+  amount      Float
+  currency    Currency @default(USD)
+  billingCycle BillingCycle
+  nextBillingDate DateTime
+  startDate   DateTime
+  endDate     DateTime?
+  
+  // Status
+  status      SubscriptionStatus @default(ACTIVE)
+  autoRenew   Boolean @default(true)
+  
+  // Payment
+  paymentMethod String?  // "Credit Card", "PayPal", etc.
+  lastFourDigits String?
+  
+  // Metadata
+  tags        String[]
+  notes       String?
+  
+  // Analytics
+  costPerUse  Float?
+  valueScore  Float?   // AI-generated 0-100
+  healthScore Float?   // 0-100
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  usageLogs   UsageLog[]
+  payments    Payment[]
+  reminders   Reminder[]
+  renewalHistory RenewalHistory[]
+  
+  @@index([userId])
+  @@index([categoryId])
+  @@index([status])
+  @@index([nextBillingDate])
+}
+
+model UsageLog {
+  id             String   @id @default(cuid())
+  subscriptionId String
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Usage data
+  hoursUsed      Float?
+  sessionsCount  Int?
+  featuresUsed   String[]
+  date           DateTime @default(now())
+  
+  metadata       Json?
+  
+  createdAt      DateTime @default(now())
+  
+  @@index([subscriptionId])
+  @@index([userId])
+  @@index([date])
+}
+
+model Payment {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  subscriptionId String?
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  
+  // Payment info
+  amount         Float
+  currency       Currency
+  status         String   // "success", "failed", "pending"
+  paymentMethod  String
+  
+  // Stripe
+  stripePaymentIntentId String? @unique
+  stripeInvoiceId       String?
+  
+  paidAt         DateTime?
+  failureReason  String?
+  
+  createdAt      DateTime @default(now())
+  
+  @@index([userId])
+  @@index([subscriptionId])
+  @@index([status])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  type      NotificationType
+  title     String
+  message   String
+  
+  read      Boolean  @default(false)
+  actionUrl String?
+  
+  metadata  Json?
+  
+  createdAt DateTime @default(now())
+  readAt    DateTime?
+  
+  @@index([userId])
+  @@index([read])
+  @@index([createdAt])
+}
+
+model Reminder {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscriptionId String
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  
+  type           String   // "14_days", "7_days", "1_day"
+  scheduledFor   DateTime
+  sent           Boolean  @default(false)
+  sentAt         DateTime?
+  
+  emailSent      Boolean  @default(false)
+  pushSent       Boolean  @default(false)
+  
+  createdAt      DateTime @default(now())
+  
+  @@index([userId])
+  @@index([subscriptionId])
+  @@index([scheduledFor])
+  @@index([sent])
+}
+
+model AIChat {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  messages  Json[]   // Array of {role, content, timestamp}
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([userId])
+}
+
+model RenewalHistory {
+  id             String   @id @default(cuid())
+  subscriptionId String
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  
+  renewedAt      DateTime
+  amount         Float
+  currency       Currency
+  success        Boolean
+  
+  metadata       Json?
+  
+  @@index([subscriptionId])
+  @@index([renewedAt])
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  action    String   // "created_subscription", "deleted_subscription", etc.
+  entity    String   // "subscription", "user", etc.
+  entityId  String?
+  
+  metadata  Json?
+  ipAddress String?
+  userAgent String?
+  
+  createdAt DateTime @default(now())
+  
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model StreamingService {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  logo        String
+  website     String
+  category    String   // "Streaming", "Music", "Cloud Storage", etc.
+  
+  // Popular pricing tiers
+  pricingTiers Json[]
+  
+  // Content catalog for AI search
+  popularContent String[]
+  
+  active      Boolean  @default(true)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([category])
+  @@index([name])
+}
+
+model AnalyticsSnapshot {
+  id             String   @id @default(cuid())
+  userId         String
+  
+  // Aggregated data
+  totalMonthly   Float
+  totalYearly    Float
+  activeCount    Int
+  categoryBreakdown Json
+  topExpensive   Json[]
+  
+  month          Int
+  year           Int
+  
+  createdAt      DateTime @default(now())
+  
+  @@unique([userId, month, year])
+  @@index([userId])
+}
