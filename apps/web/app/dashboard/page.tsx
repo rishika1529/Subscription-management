@@ -286,7 +286,9 @@ export default function DashboardPage() {
         ...(data.notes      ? { notes: data.notes }           : {}),
         ...(data.logo       ? { logo: data.logo }             : {}),
         autoRenew: data.autoRenew ?? true,
-        emailReminders: data.emailReminders !== false,
+        // Only send when explicitly disabled — old backends reject unknown fields,
+        // and the service defaults to sending emails when the field is absent.
+        ...(data.emailReminders === false ? { emailReminders: false } : {}),
       });
       setModalOpen(false);
       await loadSubs();
