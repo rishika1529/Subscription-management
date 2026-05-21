@@ -82,6 +82,10 @@ export class CreateSubscriptionDto {
   @IsString()
   @IsOptional()
   website?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  emailReminders?: boolean;
 }
 
 export class UpdateSubscriptionDto {

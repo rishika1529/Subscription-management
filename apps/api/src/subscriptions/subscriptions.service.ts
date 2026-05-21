@@ -74,17 +74,21 @@ export class SubscriptionsService {
     this.notificationsGateway.sendToUser(userId, 'subscription:created', { subscription });
 
     // Email: subscription added confirmation + renewal alert if within 7 days
-    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { email: true, firstName: true } });
-    if (user?.email) {
-      this.emailService.sendSubscriptionAddedEmail(user.email, subscription).catch(() => {});
+    // Skipped if caller explicitly set emailReminders: false
+    const emailReminders = dto.emailReminders !== false;
+    if (emailReminders) {
+      const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { email: true, firstName: true } });
+      if (user?.email) {
+        this.emailService.sendSubscriptionAddedEmail(user.email, subscription).catch(() => {});
 
-      // If renewal falls within 7 days, send immediate reminder
-      if (subscription.nextBillingDate) {
-        const daysUntilRenewal = Math.ceil(
-          (new Date(subscription.nextBillingDate).getTime() - Date.now()) / 86400000,
-        );
-        if (daysUntilRenewal >= 0 && daysUntilRenewal <= 7) {
-          this.emailService.sendRenewalReminder(user.email, subscription, daysUntilRenewal).catch(() => {});
+        // If renewal falls within 7 days, send immediate reminder
+        if (subscription.nextBillingDate) {
+          const daysUntilRenewal = Math.ceil(
+            (new Date(subscription.nextBillingDate).getTime() - Date.now()) / 86400000,
+          );
+          if (daysUntilRenewal >= 0 && daysUntilRenewal <= 7) {
+            this.emailService.sendRenewalReminder(user.email, subscription, daysUntilRenewal).catch(() => {});
+          }
         }
       }
     }

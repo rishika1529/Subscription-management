@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   TrendingUp, TrendingDown, Bell, Plus, Calendar, DollarSign,
   LayoutDashboard, Settings, LogOut, BarChart3, CreditCard,
-  Sparkles, Search, MessageSquare, X, RefreshCw, User,
+  Sparkles, Search, MessageSquare, X, RefreshCw, User, Menu,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { AddSubscriptionModal } from '../../components/subscriptions/AddSubscriptionModal';
@@ -242,6 +242,7 @@ export default function DashboardPage() {
   const [user, setUser]               = useState<any>(null);
   const [search, setSearch]           = useState('');
   const [notifHistory, setNotifHistory] = useState<{id:string;text:string;time:Date}[]>([]);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Fetch subscriptions from API
   const loadSubs = useCallback(async () => {
@@ -285,6 +286,7 @@ export default function DashboardPage() {
         ...(data.notes      ? { notes: data.notes }           : {}),
         ...(data.logo       ? { logo: data.logo }             : {}),
         autoRenew: data.autoRenew ?? true,
+        emailReminders: data.emailReminders !== false,
       });
       setModalOpen(false);
       await loadSubs();
@@ -329,10 +331,19 @@ export default function DashboardPage() {
   return (
     <div className="page-dashboard" style={{ display: 'flex' }}>
       <ToastContainer toasts={toast.toasts} dismiss={toast.dismiss} />
+
+      {/* ── Mobile overlay ── */}
+      {sidebarOpen && (
+        <div
+          onClick={() => setSidebarOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 199, backdropFilter: 'blur(2px)' }}
+        />
+      )}
+
       {/* ── Sidebar ── */}
-      <aside style={{
+      <aside className={`dashboard-sidebar${sidebarOpen ? ' open' : ''}`} style={{
         width: 250, minHeight: '100vh',
-        background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(24px)',
+        background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(24px)',
         borderRight: '1px solid rgba(255,255,255,0.06)',
         display: 'flex', flexDirection: 'column',
         padding: '32px 18px', flexShrink: 0,
@@ -356,7 +367,7 @@ export default function DashboardPage() {
         {/* Nav */}
         <nav style={{ flex: 1 }}>
           {NAV.map(({ id, icon: Icon, label }) => (
-            <button key={id} onClick={() => setActiveNav(id)} style={{
+            <button key={id} onClick={() => { setActiveNav(id); setSidebarOpen(false); }} style={{
               width: '100%', display: 'flex', alignItems: 'center', gap: 11,
               padding: '11px 14px', borderRadius: 11, border: 'none', cursor: 'pointer',
               fontSize: 13, fontWeight: 500, marginBottom: 3, transition: 'all 0.25s',
@@ -383,17 +394,28 @@ export default function DashboardPage() {
       </aside>
 
       {/* ── Main ── */}
-      <main style={{ flex: 1, overflowY: 'auto', padding: '36px 36px 60px', minHeight: '100vh' }}>
+      <main className="dashboard-main" style={{ flex: 1, overflowY: 'auto', padding: '36px 36px 60px', minHeight: '100vh' }}>
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: -24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
+          className="dashboard-header"
           style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 44, flexWrap: 'wrap', gap: 16 }}>
-          <div>
-            <h2 className="section-title" style={{ fontSize: 32, fontWeight: 700 }}>{NAV.find(n => n.id === activeNav)?.label ?? 'Dashboard'}</h2>
-            <p style={{ color: 'var(--text-gray)', marginTop: 6, fontSize: 13 }}>
-              {activeNav === 'dashboard' ? `Welcome back, ${displayName}!` : `Manage your ${NAV.find(n=>n.id===activeNav)?.label?.toLowerCase()}`}
-            </p>
-          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {/* Hamburger — visible on mobile via CSS */}
+            <button
+              className="hamburger-btn"
+              onClick={() => setSidebarOpen(o => !o)}
+              style={{ display: 'none', width: 38, height: 38, borderRadius: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)', cursor: 'pointer', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0 }}
+            >
+              <Menu size={17} />
+            </button>
+            <div>
+              <h2 className="section-title" style={{ fontSize: 32, fontWeight: 700 }}>{NAV.find(n => n.id === activeNav)?.label ?? 'Dashboard'}</h2>
+              <p style={{ color: 'var(--text-gray)', marginTop: 6, fontSize: 13 }}>
+                {activeNav === 'dashboard' ? `Welcome back, ${displayName}!` : `Manage your ${NAV.find(n=>n.id===activeNav)?.label?.toLowerCase()}`}
+              </p>
+            </div>
+          </div>
+          <div className="dashboard-header-right" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <button onClick={loadSubs} title="Refresh" style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-gray)' }}>
               <RefreshCw size={14} />
             </button>
@@ -418,7 +440,7 @@ export default function DashboardPage() {
             <motion.div key={activeNav} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
               {/* Stats (dashboard only) */}
               {activeNav === 'dashboard' && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 22, marginBottom: 44 }}>
+                <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 22, marginBottom: 44 }}>
                   <StatCard icon={<DollarSign size={22} color="#fff" />} label="Monthly Spend" value={`$${monthlyTotal.toFixed(2)}`} trend={5} delay={0.05} />
                   <StatCard icon={<TrendingUp size={22} color="#fff" />} label="Yearly Total" value={`$${(monthlyTotal * 12).toFixed(0)}`} sub="Projected" delay={0.1} />
                   <StatCard icon={<CreditCard size={22} color="#fff" />} label="Active Subs" value={activeSubs.length} delay={0.15} />
@@ -450,7 +472,7 @@ export default function DashboardPage() {
                   </button>
                 </div>
               ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 22 }}>
+                <div className="subs-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 22 }}>
                   <AnimatePresence>
                     {filtered.map((sub, i) => (
                       <SubCard key={sub.id} sub={sub} onDelete={handleDelete} delay={i * 0.06} />

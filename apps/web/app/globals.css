@@ -664,3 +664,145 @@ input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
   filter: invert(1) brightness(0.5);
 }
+
+/* ═══════════════════════════════════════
+   RESPONSIVE — MOBILE FIRST
+═══════════════════════════════════════ */
+
+/* Tablet & below */
+@media (max-width: 900px) {
+  .auth-card {
+    padding: 40px 28px;
+    max-width: 100%;
+  }
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+  /* Auth */
+  .auth-card {
+    padding: 32px 20px;
+    border-radius: 18px;
+  }
+
+  /* Dashboard layout — sidebar goes off-screen, toggled by JS */
+  .dashboard-sidebar {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    z-index: 200;
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+    width: 260px !important;
+  }
+  .dashboard-sidebar.open {
+    transform: translateX(0);
+    box-shadow: 4px 0 40px rgba(0,0,0,0.8);
+  }
+  .dashboard-overlay {
+    display: block !important;
+  }
+
+  /* Hamburger button */
+  .hamburger-btn {
+    display: flex !important;
+  }
+
+  /* Main content full width on mobile */
+  .dashboard-main {
+    padding: 20px 16px 60px !important;
+  }
+
+  /* Dashboard header stack on mobile */
+  .dashboard-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 12px !important;
+    margin-bottom: 28px !important;
+  }
+  .dashboard-header-right {
+    width: 100%;
+    justify-content: space-between !important;
+    flex-wrap: wrap;
+  }
+  .dashboard-header h2 {
+    font-size: 22px !important;
+  }
+
+  /* Stats grid — 2 cols on mobile */
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px !important;
+    margin-bottom: 28px !important;
+  }
+  .stat-card {
+    padding: 18px !important;
+  }
+  .stat-icon {
+    width: 44px !important;
+    height: 44px !important;
+    margin-bottom: 12px !important;
+  }
+
+  /* Subscription cards — single col on mobile */
+  .subs-grid {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  /* Profile page */
+  .profile-header-card {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 20px !important;
+    padding: 24px 20px !important;
+  }
+  .profile-stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px !important;
+  }
+  .profile-panels-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Modal full screen on mobile */
+  .modal-inner {
+    max-width: 100% !important;
+    border-radius: 20px 20px 0 0 !important;
+    max-height: 92vh !important;
+  }
+  .modal-wrap {
+    align-items: flex-end !important;
+    padding: 0 !important;
+  }
+  .modal-content {
+    max-height: 52vh !important;
+  }
+
+  /* Billing cycle — 2 cols on mobile */
+  .billing-cycle-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* Section title smaller */
+  .section-title {
+    font-size: 20px !important;
+  }
+
+  /* btn-add smaller */
+  .btn-add {
+    padding: 10px 16px !important;
+    font-size: 13px !important;
+  }
+}
+
+/* Very small phones */
+@media (max-width: 380px) {
+  .stats-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .profile-stats-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
