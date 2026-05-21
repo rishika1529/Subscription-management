@@ -1,0 +1,50 @@
+FROM node:20-alpine AS base
+
+# Install dependencies only when needed
+FROM base AS deps
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+
+# Install dependencies
+COPY package.json package-lock.json* pnpm-lock.yaml* ./
+COPY apps/api/package.json ./apps/api/
+RUN npm install -g pnpm && pnpm install --frozen-lockfile
+
+# Build the application
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY apps/api ./apps/api
+COPY packages ./packages
+
+WORKDIR /app/apps/api
+
+# Generate Prisma client
+RUN npx prisma generate
+
+# Build application
+RUN npm run build
+
+# Production image
+FROM base AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nestjs
+
+# Copy necessary files
+COPY --from=builder /app/apps/api/dist ./dist
+COPY --from=builder /app/apps/api/node_modules ./node_modules
+COPY --from=builder /app/apps/api/prisma ./prisma
+COPY --from=builder /app/apps/api/package.json ./package.json
+
+USER nestjs
+
+EXPOSE 4000
+
+ENV PORT=4000
+
+# Run migrations and start server
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
