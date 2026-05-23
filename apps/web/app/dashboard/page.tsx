@@ -287,9 +287,6 @@ export default function DashboardPage() {
         ...(data.notes      ? { notes: data.notes }           : {}),
         ...(data.logo       ? { logo: data.logo }             : {}),
         autoRenew: data.autoRenew ?? true,
-        // Only send when explicitly disabled — old backends reject unknown fields,
-        // and the service defaults to sending emails when the field is absent.
-        ...(data.emailReminders === false ? { emailReminders: false } : {}),
       });
       setModalOpen(false);
       await loadSubs();
@@ -313,9 +310,6 @@ export default function DashboardPage() {
         ...(data.categoryId ? { categoryId: data.categoryId } : {}),
         ...(data.notes      ? { notes: data.notes }           : {}),
         autoRenew: data.autoRenew ?? true,
-        // Only send when explicitly disabled — old backends reject unknown fields.
-        // Service defaults to sending the update email when field is absent.
-        ...(data.emailReminders === false ? { emailReminders: false } : {}),
       });
       setEditingSub(null);
       await loadSubs();
