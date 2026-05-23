@@ -312,8 +312,10 @@ export default function DashboardPage() {
         startDate:    data.startDate ? new Date(data.startDate).toISOString() : undefined,
         ...(data.categoryId ? { categoryId: data.categoryId } : {}),
         ...(data.notes      ? { notes: data.notes }           : {}),
-        autoRenew:      data.autoRenew ?? true,
-        emailReminders: data.emailReminders !== false,
+        autoRenew: data.autoRenew ?? true,
+        // Only send when explicitly disabled — old backends reject unknown fields.
+        // Service defaults to sending the update email when field is absent.
+        ...(data.emailReminders === false ? { emailReminders: false } : {}),
       });
       setEditingSub(null);
       await loadSubs();
