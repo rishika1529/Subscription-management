@@ -177,7 +177,7 @@ export class SubscriptionsService {
     return subscription;
   }
 
-  async update(userId: string, id: string, dto: UpdateSubscriptionDto) {
+  async update(userId: string, id: string, dto: UpdateSubscriptionDto & { emailReminders?: boolean }) {
     const subscription = await this.findOne(userId, id);
 
     // Recalculate next billing date if billing cycle changed
@@ -189,10 +189,13 @@ export class SubscriptionsService {
       );
     }
 
+    // Strip emailReminders — not a DB column
+    const { emailReminders, ...updateData } = dto as any;
+
     const updated = await this.prisma.subscription.update({
       where: { id },
       data: {
-        ...dto,
+        ...updateData,
         nextBillingDate,
       },
       include: {
@@ -200,7 +203,7 @@ export class SubscriptionsService {
       },
     });
 
-    // Recalculate AI insights if amount changed
+    // Recalculate AI insights if amount or cycle changed
     if (dto.amount || dto.billingCycle) {
       this.calculateAIInsights(id).catch(console.error);
     }
@@ -212,14 +215,25 @@ export class SubscriptionsService {
         action: 'updated_subscription',
         entity: 'subscription',
         entityId: id,
-        metadata: { changes: dto as any },
+        metadata: { changes: updateData },
       },
     });
 
-    // Real-time update
+    // Real-time WebSocket push notification
     this.notificationsGateway.sendToUser(userId, 'subscription:updated', {
       subscription: updated,
     });
+
+    // Email confirmation (only when caller opts in)
+    if (emailReminders !== false) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true, firstName: true },
+      });
+      if (user?.email) {
+        this.emailService.sendSubscriptionUpdatedEmail(user.email, updated).catch(() => {});
+      }
+    }
 
     return updated;
   }

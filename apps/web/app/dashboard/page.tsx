@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { AddSubscriptionModal } from '../../components/subscriptions/AddSubscriptionModal';
+import { EditSubscriptionModal } from '../../components/subscriptions/EditSubscriptionModal';
 import { ToastContainer, useToast } from '../../components/Toast';
 import { api, clearToken } from '../../lib/api';
 
@@ -44,7 +45,7 @@ function StatCard({ label, value, sub, icon, trend, delay = 0 }: any) {
   );
 }
 
-function SubCard({ sub, onDelete, delay = 0 }: { sub: any; onDelete: (id: string) => void; delay?: number }) {
+function SubCard({ sub, onEdit, onDelete, delay = 0 }: { sub: any; onEdit: (sub: any) => void; onDelete: (id: string) => void; delay?: number }) {
   const isActive = sub.status === 'ACTIVE';
   const days = daysUntil(sub.nextBillingDate || sub.startDate);
   const initial = getInitials(sub.name);
@@ -98,7 +99,7 @@ function SubCard({ sub, onDelete, delay = 0 }: { sub: any; onDelete: (id: string
       <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
         <button
           style={{ flex: 1, padding: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#fff' }}
-          onClick={() => alert(`Edit "${sub.name}" — coming soon`)}
+          onClick={() => onEdit(sub)}
         >
           Edit
         </button>
@@ -242,6 +243,7 @@ export default function DashboardPage() {
   const [search, setSearch]           = useState('');
   const [notifHistory, setNotifHistory] = useState<{id:string;text:string;time:Date}[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [editingSub,  setEditingSub]  = useState<any>(null);
 
   // Fetch subscriptions from API
   const loadSubs = useCallback(async () => {
@@ -297,6 +299,28 @@ export default function DashboardPage() {
       setNotifHistory(h => [{ id: Date.now().toString(), text: `Added "${name}" — $${Number(data.amount).toFixed(2)}/${(data.billingCycle||'monthly').toLowerCase()}`, time: new Date() }, ...h]);
     } catch (err: any) {
       toast.error('Failed to add subscription', err.message);
+    }
+  };
+
+  const handleEditSub = async (id: string, data: any) => {
+    try {
+      await api.patch(`/subscriptions/${id}`, {
+        name:         data.name,
+        amount:       Number(data.amount),
+        currency:     data.currency || 'USD',
+        billingCycle: data.billingCycle || 'MONTHLY',
+        startDate:    data.startDate ? new Date(data.startDate).toISOString() : undefined,
+        ...(data.categoryId ? { categoryId: data.categoryId } : {}),
+        ...(data.notes      ? { notes: data.notes }           : {}),
+        autoRenew:      data.autoRenew ?? true,
+        emailReminders: data.emailReminders !== false,
+      });
+      setEditingSub(null);
+      await loadSubs();
+      toast.success(`${data.name} updated!`, 'Your subscription has been saved.');
+      setNotifHistory(h => [{ id: Date.now().toString(), text: `Updated "${data.name}" — $${Number(data.amount).toFixed(2)}/${(data.billingCycle||'monthly').toLowerCase()}`, time: new Date() }, ...h]);
+    } catch (err: any) {
+      toast.error('Failed to update subscription', err.message);
     }
   };
 
@@ -476,7 +500,7 @@ export default function DashboardPage() {
                 <div className="subs-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 22 }}>
                   <AnimatePresence>
                     {filtered.map((sub, i) => (
-                      <SubCard key={sub.id} sub={sub} onDelete={handleDelete} delay={i * 0.06} />
+                      <SubCard key={sub.id} sub={sub} onEdit={setEditingSub} onDelete={handleDelete} delay={i * 0.06} />
                     ))}
                   </AnimatePresence>
                 </div>
@@ -542,6 +566,21 @@ export default function DashboardPage() {
           )}
         </AnimatePresence>
       </main>
+
+      <EditSubscriptionModal
+        isOpen={!!editingSub}
+        onClose={() => setEditingSub(null)}
+        onSubmit={handleEditSub}
+        subscription={editingSub}
+        categories={[
+          { id: '', name: 'Entertainment', color: '#E50914' },
+          { id: '', name: 'Music',         color: '#1DB954' },
+          { id: '', name: 'Productivity',  color: '#0078D4' },
+          { id: '', name: 'Cloud Storage', color: '#4285F4' },
+          { id: '', name: 'Gaming',        color: '#9146FF' },
+          { id: '', name: 'Education',     color: '#FF6B35' },
+        ]}
+      />
 
       <AddSubscriptionModal
         isOpen={modalOpen}

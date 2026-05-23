@@ -143,6 +143,10 @@ export class UpdateSubscriptionDto {
   @IsEnum(SubscriptionStatus)
   @IsOptional()
   status?: SubscriptionStatus;
+
+  @IsBoolean()
+  @IsOptional()
+  emailReminders?: boolean;
 }
 
 export class SubscriptionFiltersDto {
