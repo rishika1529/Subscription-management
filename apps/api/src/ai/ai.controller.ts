@@ -21,8 +21,19 @@ import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 export class AIController {
   constructor(private readonly aiService: AIService) {}
 
+  /** Primary chat endpoint — returns JSON { message } for the dashboard UI. */
   @Post('chat')
   async chat(
+    @CurrentUser() user: any,
+    @Body('message') message: string,
+  ) {
+    const reply = await this.aiService.chatSimple(user.userId, message);
+    return { message: reply };
+  }
+
+  /** SSE streaming endpoint for future richer clients. */
+  @Post('chat/stream')
+  async chatStream(
     @CurrentUser() user: any,
     @Body('message') message: string,
     @Res() res: Response,

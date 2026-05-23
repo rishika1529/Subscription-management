@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   TrendingUp, TrendingDown, Bell, Plus, Calendar, DollarSign,
   LayoutDashboard, Settings, LogOut, BarChart3, CreditCard,
-  Sparkles, Search, MessageSquare, X, RefreshCw, User, Menu,
+  Sparkles, Search, X, RefreshCw, User, Menu,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { AddSubscriptionModal } from '../../components/subscriptions/AddSubscriptionModal';
@@ -228,7 +228,6 @@ const NAV = [
   { id: 'subscriptions', icon: CreditCard,       label: 'Subscriptions' },
   { id: 'analytics',     icon: BarChart3,        label: 'Analytics' },
   { id: 'ai',            icon: Sparkles,         label: 'AI Assistant' },
-  { id: 'chat',          icon: MessageSquare,    label: 'AI Chat' },
   { id: 'notifications', icon: Bell,             label: 'Notifications' },
 ];
 
@@ -491,8 +490,8 @@ export default function DashboardPage() {
             </motion.div>
           )}
 
-          {(activeNav === 'ai' || activeNav === 'chat') && (
-            <motion.div key="chat" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+          {activeNav === 'ai' && (
+            <motion.div key="ai" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
               <AIChat />
             </motion.div>
           )}

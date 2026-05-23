@@ -13,6 +13,7 @@ import { PaymentsModule } from './payments/payments.module';
 import { EmailModule } from './email/email.module';
 import { DatabaseModule } from './database/database.module';
 import { CacheModule } from './cache/cache.module';
+import { SchedulerModule } from './scheduler/scheduler.module';
 
 @Module({
   imports: [
@@ -69,6 +70,7 @@ import { CacheModule } from './cache/cache.module';
     NotificationsModule,
     PaymentsModule,
     EmailModule,
+    SchedulerModule,
   ],
 })
 export class AppModule {}

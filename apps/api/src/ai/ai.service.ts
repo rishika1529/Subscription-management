@@ -17,8 +17,70 @@ export class AIService {
     });
   }
 
+  /** Non-streaming chat — used by the dashboard AI chat panel. */
+  async chatSimple(userId: string, message: string): Promise<string> {
+    const apiKey = this.configService.get('OPENAI_API_KEY');
+    if (!apiKey) {
+      return (
+        "⚠️ The AI assistant isn't configured yet. " +
+        'Add your **OPENAI_API_KEY** to the backend environment variables on Render, then redeploy.'
+      );
+    }
+
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          subscriptions: {
+            where: { status: 'ACTIVE' },
+            include: { category: true, usageLogs: { take: 5 } },
+          },
+        },
+      });
+
+      const context = this.buildUserContext(user);
+
+      const chatHistory = await this.prisma.aIChat.findFirst({
+        where: { userId },
+        orderBy: { updatedAt: 'desc' },
+      });
+
+      const messages: any[] = [
+        { role: 'system', content: this.getSystemPrompt(context) },
+        ...((chatHistory?.messages as any[]) || []).slice(-10),
+        { role: 'user', content: message },
+      ];
+
+      const response = await this.openai.chat.completions.create({
+        model: this.configService.get('OPENAI_MODEL') || 'gpt-4-turbo-preview',
+        messages,
+        temperature: 0.7,
+        max_tokens: 1000,
+      });
+
+      const reply = response.choices[0]?.message?.content || 'Sorry, I could not generate a response.';
+
+      // Persist chat history
+      const newMessages = [
+        ...((chatHistory?.messages as any[]) || []),
+        { role: 'user',      content: message, timestamp: new Date() },
+        { role: 'assistant', content: reply,   timestamp: new Date() },
+      ];
+      await this.prisma.aIChat.upsert({
+        where:  { userId },
+        create: { userId, messages: newMessages },
+        update: { messages: newMessages, updatedAt: new Date() },
+      });
+
+      return reply;
+    } catch (error: any) {
+      this.logger.error('AI chat error:', error.message);
+      return `❌ AI error: ${error.message}. Make sure your OPENAI_API_KEY is valid and has credits.`;
+    }
+  }
+
+  /** Streaming chat — kept for future SSE use. */
   async chat(userId: string, message: string): Promise<AsyncIterable<string>> {
-    // Get user context
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: {
@@ -29,35 +91,19 @@ export class AIService {
       },
     });
 
-    // Build context
     const context = this.buildUserContext(user);
 
-    // Get chat history
     const chatHistory = await this.prisma.aIChat.findFirst({
       where: { userId },
       orderBy: { updatedAt: 'desc' },
     });
 
     const messages: any[] = [
-      {
-        role: 'system',
-        content: this.getSystemPrompt(context),
-      },
+      { role: 'system', content: this.getSystemPrompt(context) },
+      ...((chatHistory?.messages as any[]) || []).slice(-10),
+      { role: 'user', content: message },
     ];
 
-    // Add recent chat history
-    if (chatHistory?.messages) {
-      const recentMessages = (chatHistory.messages as any[]).slice(-10);
-      messages.push(...recentMessages);
-    }
-
-    // Add current message
-    messages.push({
-      role: 'user',
-      content: message,
-    });
-
-    // Stream response
     const stream = await this.openai.chat.completions.create({
       model: this.configService.get('OPENAI_MODEL') || 'gpt-4-turbo-preview',
       messages,
@@ -66,13 +112,11 @@ export class AIService {
       max_tokens: 1000,
     });
 
-    // Save message to history
     const newMessages = [
       ...((chatHistory?.messages as any[]) || []),
       { role: 'user', content: message, timestamp: new Date() },
     ];
 
-    // Return async generator
     return this.streamResponse(stream, userId, newMessages);
   }
 
@@ -91,25 +135,12 @@ export class AIService {
       }
     }
 
-    // Save assistant response
-    messages.push({
-      role: 'assistant',
-      content: fullResponse,
-      timestamp: new Date(),
-    });
+    messages.push({ role: 'assistant', content: fullResponse, timestamp: new Date() });
 
     await this.prisma.aIChat.upsert({
-      where: {
-        userId,
-      },
-      create: {
-        userId,
-        messages,
-      },
-      update: {
-        messages,
-        updatedAt: new Date(),
-      },
+      where:  { userId },
+      create: { userId, messages },
+      update: { messages, updatedAt: new Date() },
     });
   }
 
