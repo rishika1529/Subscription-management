@@ -89,12 +89,12 @@ export class GmailController {
     return { detected, count: detected.length };
   }
 
-  /** Disconnect Gmail. */
+  /** Disconnect one Gmail account (by connectionId) or all if no id given. */
   @Delete('disconnect')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  async disconnect(@CurrentUser() user: any) {
-    await this.gmail.disconnect(user.userId);
+  async disconnect(@CurrentUser() user: any, @Query('id') id?: string) {
+    await this.gmail.disconnect(user.userId, id);
     return { success: true };
   }
 }

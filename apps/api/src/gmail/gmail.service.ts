@@ -59,25 +59,25 @@ export class GmailService {
 
     if (!tokens.refresh_token) {
       throw new BadRequestException(
-        'No refresh token received. Please disconnect and reconnect Gmail.',
+        'No refresh token received. Please disconnect this account and reconnect.',
       );
     }
 
     oauth2.setCredentials(tokens);
-    const gmail = google.oauth2({ version: 'v2', auth: oauth2 });
-    const { data } = await gmail.userinfo.get();
+    const userinfo = google.oauth2({ version: 'v2', auth: oauth2 });
+    const { data } = await userinfo.userinfo.get();
+    const email = data.email || '';
 
     await this.prisma.gmailConnection.upsert({
-      where: { userId },
+      where: { userId_gmailEmail: { userId, gmailEmail: email } },
       create: {
         userId,
-        gmailEmail: data.email || '',
+        gmailEmail: email,
         accessToken: tokens.access_token || '',
         refreshToken: tokens.refresh_token,
         expiresAt: new Date(tokens.expiry_date || Date.now() + 3600000),
       },
       update: {
-        gmailEmail: data.email || '',
         accessToken: tokens.access_token || '',
         refreshToken: tokens.refresh_token,
         expiresAt: new Date(tokens.expiry_date || Date.now() + 3600000),
@@ -87,19 +87,43 @@ export class GmailService {
   }
 
   async getStatus(userId: string) {
-    const conn = await this.prisma.gmailConnection.findUnique({ where: { userId } });
-    if (!conn) return { connected: false };
-    return { connected: true, email: conn.gmailEmail };
+    const connections = await this.prisma.gmailConnection.findMany({ where: { userId } });
+    return {
+      connected: connections.length > 0,
+      accounts: connections.map(c => ({ id: c.id, email: c.gmailEmail })),
+    };
   }
 
-  async disconnect(userId: string) {
-    await this.prisma.gmailConnection.deleteMany({ where: { userId } });
+  async disconnect(userId: string, connectionId?: string) {
+    if (connectionId) {
+      await this.prisma.gmailConnection.deleteMany({ where: { id: connectionId, userId } });
+    } else {
+      await this.prisma.gmailConnection.deleteMany({ where: { userId } });
+    }
   }
 
   async scanGmail(userId: string): Promise<DetectedSubscription[]> {
-    const conn = await this.prisma.gmailConnection.findUnique({ where: { userId } });
-    if (!conn) throw new BadRequestException('Gmail not connected. Connect your Gmail account first.');
+    const connections = await this.prisma.gmailConnection.findMany({ where: { userId } });
+    if (connections.length === 0)
+      throw new BadRequestException('No Gmail accounts connected. Connect at least one account first.');
 
+    const allSnippets: string[] = [];
+
+    // Scan ALL connected accounts
+    for (const conn of connections) {
+      try {
+        const snippets = await this.scanSingleAccount(conn, userId);
+        allSnippets.push(...snippets);
+      } catch (err: any) {
+        this.logger.warn(`Failed to scan ${conn.gmailEmail}: ${err.message}`);
+      }
+    }
+
+    if (allSnippets.length === 0) return [];
+    return this.extractWithAI(allSnippets);
+  }
+
+  private async scanSingleAccount(conn: any, userId: string): Promise<string[]> {
     const oauth2 = this.createOAuth2Client();
     oauth2.setCredentials({
       access_token: conn.accessToken,
@@ -107,11 +131,10 @@ export class GmailService {
       expiry_date: conn.expiresAt.getTime(),
     });
 
-    // Auto-refresh token if needed
     oauth2.on('tokens', async (tokens) => {
       if (tokens.access_token) {
         await this.prisma.gmailConnection.update({
-          where: { userId },
+          where: { id: conn.id },
           data: {
             accessToken: tokens.access_token,
             expiresAt: new Date(tokens.expiry_date || Date.now() + 3600000),
@@ -122,7 +145,6 @@ export class GmailService {
 
     const gmail = google.gmail({ version: 'v1', auth: oauth2 });
 
-    // Search for billing/subscription emails in the last 180 days
     const query = [
       'newer_than:180d',
       '(',
@@ -131,18 +153,12 @@ export class GmailService {
       ')',
     ].join(' ');
 
-    this.logger.log(`Scanning Gmail for userId=${userId}`);
+    this.logger.log(`Scanning ${conn.gmailEmail} for userId=${userId}`);
 
-    const listRes = await gmail.users.messages.list({
-      userId: 'me',
-      q: query,
-      maxResults: 100,
-    });
-
+    const listRes = await gmail.users.messages.list({ userId: 'me', q: query, maxResults: 100 });
     const messages = listRes.data.messages || [];
     if (messages.length === 0) return [];
 
-    // Fetch snippets for each message (lightweight)
     const snippets: string[] = [];
     const batchSize = 20;
 
@@ -151,14 +167,12 @@ export class GmailService {
       const fetched = await Promise.allSettled(
         batch.map(m =>
           gmail.users.messages.get({
-            userId: 'me',
-            id: m.id!,
+            userId: 'me', id: m.id!,
             format: 'metadata',
             metadataHeaders: ['From', 'Subject', 'Date'],
           }),
         ),
       );
-
       for (const result of fetched) {
         if (result.status === 'fulfilled') {
           const msg = result.value.data;
@@ -166,13 +180,11 @@ export class GmailService {
           const from    = headers.find(h => h.name === 'From')?.value || '';
           const subject = headers.find(h => h.name === 'Subject')?.value || '';
           const date    = headers.find(h => h.name === 'Date')?.value || '';
-          const snippet = msg.snippet || '';
-          snippets.push(`From: ${from}\nSubject: ${subject}\nDate: ${date}\nSnippet: ${snippet}`);
+          snippets.push(`Account: ${conn.gmailEmail}\nFrom: ${from}\nSubject: ${subject}\nDate: ${date}\nSnippet: ${msg.snippet || ''}`);
         }
       }
     }
-
-    return this.extractWithAI(snippets);
+    return snippets;
   }
 
   async parseCSV(userId: string, fileContent: string): Promise<DetectedSubscription[]> {

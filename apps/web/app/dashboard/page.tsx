@@ -226,7 +226,7 @@ function AIChat() {
 
 // ── Import Panel ──────────────────────────────────────────────────────────────
 function ImportPanel({ onSubscriptionsAdded, toast }: { onSubscriptionsAdded: () => void; toast: any }) {
-  const [gmailStatus, setGmailStatus] = useState<{ connected: boolean; email?: string } | null>(null);
+  const [gmailStatus, setGmailStatus] = useState<{ connected: boolean; accounts?: {id:string;email:string}[] } | null>(null);
   const [scanning, setScanning]     = useState(false);
   const [detected, setDetected]     = useState<any[]>([]);
   const [adding, setAdding]         = useState<string[]>([]);
@@ -234,6 +234,8 @@ function ImportPanel({ onSubscriptionsAdded, toast }: { onSubscriptionsAdded: ()
   const [csvText, setCsvText]       = useState('');
   const [parseCsv, setParseCsv]     = useState(false);
   const [tab, setTab]               = useState<'gmail'|'csv'>('gmail');
+
+  const FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSfvlmZO1ltYgcruyUCcCaQFOYtq58wZ5TTNq4J-vwuoy014VA/viewform?usp=dialog';
 
   useEffect(() => {
     // Check if redirected back from Gmail OAuth
@@ -264,12 +266,12 @@ function ImportPanel({ onSubscriptionsAdded, toast }: { onSubscriptionsAdded: ()
     } catch (e: any) { toast.error(e.message || 'Could not get auth URL'); }
   };
 
-  const disconnectGmail = async () => {
+  const disconnectGmail = async (id?: string) => {
     try {
-      await api.delete('/gmail/disconnect');
-      setGmailStatus({ connected: false });
-      setDetected([]);
-      toast.success('Gmail disconnected.');
+      await api.delete(`/gmail/disconnect${id ? `?id=${id}` : ''}`);
+      await loadStatus();
+      if (!id) setDetected([]);
+      toast.success('Account disconnected.');
     } catch (e: any) { toast.error(e.message); }
   };
 
@@ -349,35 +351,59 @@ function ImportPanel({ onSubscriptionsAdded, toast }: { onSubscriptionsAdded: ()
         <div className="glass-panel" style={{ padding: 28, marginBottom: 28 }}>
           {gmailStatus === null ? (
             <p style={{ color: 'var(--text-gray)' }}>Checking Gmail connection…</p>
-          ) : gmailStatus.connected ? (
-            <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-                <CheckCircle size={20} color="#10b981" />
-                <div>
-                  <p style={{ fontWeight: 600, margin: 0 }}>Gmail Connected</p>
-                  <p style={{ fontSize: 12, color: 'var(--text-gray)', margin: 0 }}>{gmailStatus.email}</p>
-                </div>
-                <button onClick={disconnectGmail} style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: 'rgba(255,0,51,0.1)', border: '1px solid rgba(255,0,51,0.3)', borderRadius: 8, color: 'var(--primary-red)', fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font-space-grotesk)' }}>
-                  <Unlink size={12} /> Disconnect
-                </button>
-              </div>
-              <button onClick={scanGmail} disabled={scanning} className="btn-red" style={{ display: 'flex', alignItems: 'center', gap: 8, opacity: scanning ? 0.7 : 1 }}>
-                {scanning ? <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Scanning emails…</> : '🔍 Scan Last 180 Days'}
-              </button>
-              {scanning && (
-                <p style={{ color: 'var(--text-gray)', fontSize: 13, marginTop: 12 }}>
-                  Fetching emails and running AI extraction… this takes ~15 seconds.
-                </p>
-              )}
-            </>
           ) : (
             <>
-              <p style={{ color: 'var(--text-gray)', fontSize: 14, marginBottom: 20, lineHeight: 1.7 }}>
-                Connect your Gmail to automatically detect subscriptions from billing emails like Netflix receipts, Spotify invoices, and renewal notices. We request <strong style={{ color: '#fff' }}>read-only</strong> access — we never store email content.
-              </p>
-              <button onClick={connectGmail} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 24px', background: 'linear-gradient(135deg,#4285f4,#2563eb)', border: 'none', borderRadius: 12, color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-space-grotesk)' }}>
-                <Mail size={18} /> Connect Gmail
-              </button>
+              {/* Connected accounts list */}
+              {(gmailStatus.accounts || []).length > 0 && (
+                <div style={{ marginBottom: 20 }}>
+                  <p style={{ fontSize: 11, color: 'var(--text-gray)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 12 }}>
+                    Connected Accounts ({gmailStatus.accounts!.length})
+                  </p>
+                  {gmailStatus.accounts!.map(acc => (
+                    <div key={acc.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: 'rgba(16,185,129,0.07)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 10, marginBottom: 8 }}>
+                      <CheckCircle size={16} color="#10b981" />
+                      <span style={{ flex: 1, fontSize: 14, fontWeight: 500 }}>{acc.email}</span>
+                      <button onClick={() => disconnectGmail(acc.id)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', background: 'rgba(255,0,51,0.1)', border: '1px solid rgba(255,0,51,0.25)', borderRadius: 7, color: 'var(--primary-red)', fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-space-grotesk)' }}>
+                        <Unlink size={11} /> Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add another account */}
+              <div style={{ marginBottom: 20 }}>
+                <p style={{ color: 'var(--text-gray)', fontSize: 13, marginBottom: 12, lineHeight: 1.6 }}>
+                  {(gmailStatus.accounts || []).length === 0
+                    ? <>Connect your Gmail to auto-detect subscriptions from billing emails. We request <strong style={{ color: '#fff' }}>read-only</strong> access — email content is never stored.</>
+                    : 'Add another Gmail account to scan all of them together.'}
+                </p>
+                <button onClick={connectGmail} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 22px', background: 'linear-gradient(135deg,#4285f4,#2563eb)', border: 'none', borderRadius: 12, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-space-grotesk)' }}>
+                  <Mail size={16} /> {(gmailStatus.accounts || []).length === 0 ? 'Connect Gmail' : '+ Add Another Account'}
+                </button>
+              </div>
+
+              {/* Access request notice */}
+              <div style={{ padding: '12px 16px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 10, marginBottom: (gmailStatus.accounts || []).length > 0 ? 20 : 0 }}>
+                <p style={{ fontSize: 12, color: '#f59e0b', margin: 0, lineHeight: 1.6 }}>
+                  ⚠️ This app is in testing mode. Only approved accounts can connect Gmail.{' '}
+                  <a href={FORM_URL} target="_blank" rel="noreferrer" style={{ color: '#fbbf24', fontWeight: 600, textDecoration: 'underline' }}>
+                    Request access here →
+                  </a>
+                </p>
+              </div>
+
+              {/* Scan button */}
+              {(gmailStatus.accounts || []).length > 0 && (
+                <>
+                  <button onClick={scanGmail} disabled={scanning} className="btn-red" style={{ display: 'flex', alignItems: 'center', gap: 8, opacity: scanning ? 0.7 : 1 }}>
+                    {scanning
+                      ? <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Scanning {gmailStatus.accounts!.length} account{gmailStatus.accounts!.length > 1 ? 's' : ''}…</>
+                      : `🔍 Scan All ${gmailStatus.accounts!.length} Account${gmailStatus.accounts!.length > 1 ? 's' : ''} (180 days)`}
+                  </button>
+                  {scanning && <p style={{ color: 'var(--text-gray)', fontSize: 13, marginTop: 12 }}>Fetching emails and running AI extraction… ~15 seconds per account.</p>}
+                </>
+              )}
             </>
           )}
         </div>
