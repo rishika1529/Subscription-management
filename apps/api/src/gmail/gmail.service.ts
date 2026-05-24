@@ -254,7 +254,7 @@ export class GmailService {
     if (inputs.length === 0) return [];
 
     const combined = inputs.slice(0, 80).join('\n---\n');
-    const confidenceThreshold = targetService ? 0.3 : 0.5;
+    const confidenceThreshold = targetService ? 0.2 : 0.3;
 
     const targetHint = targetService
       ? `\nIMPORTANT: The user is specifically looking for "${targetService}". If you find any email related to this service, include it even if the price isn't explicitly visible — make your best estimate based on known pricing for that service (e.g. Crunchyroll ~$7.99/mo, Spotify ~$9.99/mo). Set confidence to at least 0.4 if the email is clearly from/about that service.\n`
@@ -275,7 +275,7 @@ Return a JSON array of detected subscriptions. Each object must have:
 - detectedFrom: string (brief note like "invoice email" or "bank statement")
 
 Rules:
-- Only include items with confidence >= ${confidenceThreshold}
+- Only include items with confidence >= ${confidenceThreshold} (be generous — if the data clearly shows a subscription, set confidence 0.7+)
 - Deduplicate — return each service once
 - If you see "Adobe Creative Cloud" or just "Adobe", use "Adobe Creative Cloud" as the name
 - Ignore one-time purchases, only recurring subscriptions
@@ -291,7 +291,13 @@ Rules:
       });
 
       const raw = response.choices[0]?.message?.content?.trim() || '[]';
-      const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+      // Strip markdown fences
+      let cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+      // If model returned text before/after the JSON array, extract just the array
+      if (!cleaned.startsWith('[')) {
+        const match = cleaned.match(/\[[\s\S]*\]/);
+        cleaned = match ? match[0] : '[]';
+      }
       const parsed: any[] = JSON.parse(cleaned);
 
       return parsed
