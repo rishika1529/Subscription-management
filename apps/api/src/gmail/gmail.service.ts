@@ -187,6 +187,59 @@ export class GmailService {
     return snippets;
   }
 
+  async searchGmail(userId: string, query: string): Promise<DetectedSubscription[]> {
+    const connections = await this.prisma.gmailConnection.findMany({ where: { userId } });
+    if (connections.length === 0)
+      throw new BadRequestException('No Gmail accounts connected.');
+
+    const allSnippets: string[] = [];
+
+    for (const conn of connections) {
+      try {
+        const oauth2 = this.createOAuth2Client();
+        oauth2.setCredentials({
+          access_token: conn.accessToken,
+          refresh_token: conn.refreshToken,
+          expiry_date: conn.expiresAt.getTime(),
+        });
+        oauth2.on('tokens', async (tokens) => {
+          if (tokens.access_token) {
+            await this.prisma.gmailConnection.update({
+              where: { id: conn.id },
+              data: { accessToken: tokens.access_token, expiresAt: new Date(tokens.expiry_date || Date.now() + 3600000) },
+            });
+          }
+        });
+
+        const gmail = google.gmail({ version: 'v1', auth: oauth2 });
+        const gmailQuery = `newer_than:180d (subject:${query} OR from:${query} OR "${query}")`;
+
+        const listRes = await gmail.users.messages.list({ userId: 'me', q: gmailQuery, maxResults: 30 });
+        const messages = listRes.data.messages || [];
+
+        const fetched = await Promise.allSettled(
+          messages.slice(0, 20).map(m =>
+            gmail.users.messages.get({ userId: 'me', id: m.id!, format: 'metadata', metadataHeaders: ['From', 'Subject', 'Date'] }),
+          ),
+        );
+        for (const r of fetched) {
+          if (r.status === 'fulfilled') {
+            const headers = r.value.data.payload?.headers || [];
+            const from    = headers.find(h => h.name === 'From')?.value || '';
+            const subject = headers.find(h => h.name === 'Subject')?.value || '';
+            const date    = headers.find(h => h.name === 'Date')?.value || '';
+            allSnippets.push(`Account: ${conn.gmailEmail}\nFrom: ${from}\nSubject: ${subject}\nDate: ${date}\nSnippet: ${r.value.data.snippet || ''}`);
+          }
+        }
+      } catch (err: any) {
+        this.logger.warn(`Search failed for ${conn.gmailEmail}: ${err.message}`);
+      }
+    }
+
+    if (allSnippets.length === 0) return [];
+    return this.extractWithAI(allSnippets);
+  }
+
   async parseCSV(userId: string, fileContent: string): Promise<DetectedSubscription[]> {
     if (!fileContent || fileContent.trim().length === 0) {
       throw new BadRequestException('File is empty.');

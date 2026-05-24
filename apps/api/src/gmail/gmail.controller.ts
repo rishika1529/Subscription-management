@@ -69,6 +69,16 @@ export class GmailController {
     return { detected, count: detected.length };
   }
 
+  /** Search Gmail for a specific service name and extract subscription details. */
+  @Post('search')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  async search(@CurrentUser() user: any, @Body('query') query: string) {
+    if (!query?.trim()) throw new BadRequestException('query is required');
+    const detected = await this.gmail.searchGmail(user.userId, query.trim());
+    return { detected, count: detected.length };
+  }
+
   /** Upload a CSV or bank statement and extract subscriptions. */
   @Post('import-csv')
   @UseGuards(JwtAuthGuard)

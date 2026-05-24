@@ -236,6 +236,8 @@ function ImportPanel({ onSubscriptionsAdded, toast }: { onSubscriptionsAdded: ()
   const [tab, setTab]               = useState<'gmail'|'csv'>('gmail');
 
   const FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSfvlmZO1ltYgcruyUCcCaQFOYtq58wZ5TTNq4J-vwuoy014VA/viewform?usp=dialog';
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searching, setSearching]     = useState(false);
 
   useEffect(() => {
     // Check if redirected back from Gmail OAuth
@@ -285,6 +287,19 @@ function ImportPanel({ onSubscriptionsAdded, toast }: { onSubscriptionsAdded: ()
       if (list.length === 0) toast.success('No new subscriptions found in recent emails.');
     } catch (e: any) { toast.error(e.message || 'Scan failed'); }
     finally { setScanning(false); }
+  };
+
+  const searchByName = async () => {
+    if (!searchQuery.trim()) return;
+    setSearching(true);
+    setDetected([]);
+    try {
+      const res = await api.post('/gmail/search', { query: searchQuery.trim() });
+      const list = res?.data?.detected ?? res?.detected ?? [];
+      setDetected(list);
+      if (list.length === 0) toast.success(`No emails found for "${searchQuery}" in last 180 days.`);
+    } catch (e: any) { toast.error(e.message || 'Search failed'); }
+    finally { setSearching(false); }
   };
 
   const scanCsv = async () => {
@@ -406,6 +421,33 @@ function ImportPanel({ onSubscriptionsAdded, toast }: { onSubscriptionsAdded: ()
               )}
             </>
           )}
+        </div>
+      )}
+
+      {/* Search by name — visible on Gmail tab when connected */}
+      {tab === 'gmail' && gmailStatus?.connected && (
+        <div className="glass-panel" style={{ padding: 24, marginBottom: 28 }}>
+          <p style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>🔍 Search for a specific service</p>
+          <p style={{ color: 'var(--text-gray)', fontSize: 13, marginBottom: 14, lineHeight: 1.6 }}>
+            Type a service name (e.g. "Crunchyroll", "Adobe") — we'll search your emails for it and detect the subscription.
+          </p>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <input
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && searchByName()}
+              placeholder="e.g. Crunchyroll, Disney+, Adobe…"
+              style={{ flex: 1, padding: '12px 16px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, color: '#fff', fontSize: 14, outline: 'none', fontFamily: 'var(--font-space-grotesk)' }}
+            />
+            <button
+              onClick={searchByName}
+              disabled={searching || !searchQuery.trim()}
+              className="btn-red"
+              style={{ padding: '12px 20px', opacity: searching || !searchQuery.trim() ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}
+            >
+              {searching ? <><Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> Searching…</> : 'Search'}
+            </button>
+          </div>
         </div>
       )}
 
