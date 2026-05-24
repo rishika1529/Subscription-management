@@ -1,0 +1,262 @@
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { PrismaService } from '../database/prisma.service';
+import OpenAI from 'openai';
+import { google } from 'googleapis';
+
+// Known subscription billing senders — improves signal-to-noise ratio
+const BILLING_SENDERS = [
+  'netflix', 'spotify', 'adobe', 'apple', 'amazon', 'google', 'microsoft',
+  'youtube', 'hulu', 'disney', 'hbo', 'dropbox', 'notion', 'slack', 'zoom',
+  'github', 'digitalocean', 'aws', 'heroku', 'vercel', 'figma', 'canva',
+  'linkedin', 'grammarly', 'nordvpn', 'expressvpn', 'duolingo', 'coursera',
+  'udemy', 'skillshare', 'masterclass', 'patreon', 'substack', 'medium',
+  'nytimes', 'wsj', 'twitch', 'crunchyroll', 'funimation', 'paramount',
+  'peacock', 'espn', 'dazn', 'icloud', 'onedrive', 'lastpass', '1password',
+  'bitwarden', 'dashlane', 'malwarebytes', 'norton', 'mcafee', 'surfshark',
+  'playstation', 'xbox', 'nintendo', 'steam', 'invoice', 'billing',
+  'receipt', 'payment', 'subscription', 'renewal', 'charge',
+];
+
+@Injectable()
+export class GmailService {
+  private readonly logger = new Logger(GmailService.name);
+
+  constructor(
+    private config: ConfigService,
+    private prisma: PrismaService,
+  ) {}
+
+  private get openai() {
+    return new OpenAI({
+      apiKey: this.config.get('OPENAI_API_KEY'),
+      baseURL:
+        this.config.get('OPENAI_BASE_URL') ||
+        'https://generativelanguage.googleapis.com/v1beta/openai/',
+    });
+  }
+
+  private get model() {
+    return this.config.get('OPENAI_MODEL') || 'gemini-2.0-flash';
+  }
+
+  getAuthUrl(userId: string): string {
+    const oauth2 = this.createOAuth2Client();
+    return oauth2.generateAuthUrl({
+      access_type: 'offline',
+      prompt: 'consent',
+      scope: [
+        'https://www.googleapis.com/auth/gmail.readonly',
+        'https://www.googleapis.com/auth/userinfo.email',
+      ],
+      state: userId,
+    });
+  }
+
+  async handleCallback(code: string, userId: string): Promise<void> {
+    const oauth2 = this.createOAuth2Client();
+    const { tokens } = await oauth2.getToken(code);
+
+    if (!tokens.refresh_token) {
+      throw new BadRequestException(
+        'No refresh token received. Please disconnect and reconnect Gmail.',
+      );
+    }
+
+    oauth2.setCredentials(tokens);
+    const gmail = google.oauth2({ version: 'v2', auth: oauth2 });
+    const { data } = await gmail.userinfo.get();
+
+    await this.prisma.gmailConnection.upsert({
+      where: { userId },
+      create: {
+        userId,
+        gmailEmail: data.email || '',
+        accessToken: tokens.access_token || '',
+        refreshToken: tokens.refresh_token,
+        expiresAt: new Date(tokens.expiry_date || Date.now() + 3600000),
+      },
+      update: {
+        gmailEmail: data.email || '',
+        accessToken: tokens.access_token || '',
+        refreshToken: tokens.refresh_token,
+        expiresAt: new Date(tokens.expiry_date || Date.now() + 3600000),
+        updatedAt: new Date(),
+      },
+    });
+  }
+
+  async getStatus(userId: string) {
+    const conn = await this.prisma.gmailConnection.findUnique({ where: { userId } });
+    if (!conn) return { connected: false };
+    return { connected: true, email: conn.gmailEmail };
+  }
+
+  async disconnect(userId: string) {
+    await this.prisma.gmailConnection.deleteMany({ where: { userId } });
+  }
+
+  async scanGmail(userId: string): Promise<DetectedSubscription[]> {
+    const conn = await this.prisma.gmailConnection.findUnique({ where: { userId } });
+    if (!conn) throw new BadRequestException('Gmail not connected. Connect your Gmail account first.');
+
+    const oauth2 = this.createOAuth2Client();
+    oauth2.setCredentials({
+      access_token: conn.accessToken,
+      refresh_token: conn.refreshToken,
+      expiry_date: conn.expiresAt.getTime(),
+    });
+
+    // Auto-refresh token if needed
+    oauth2.on('tokens', async (tokens) => {
+      if (tokens.access_token) {
+        await this.prisma.gmailConnection.update({
+          where: { userId },
+          data: {
+            accessToken: tokens.access_token,
+            expiresAt: new Date(tokens.expiry_date || Date.now() + 3600000),
+          },
+        });
+      }
+    });
+
+    const gmail = google.gmail({ version: 'v1', auth: oauth2 });
+
+    // Search for billing/subscription emails in the last 180 days
+    const query = [
+      'newer_than:180d',
+      '(',
+      BILLING_SENDERS.slice(0, 20).map(s => `from:${s}`).join(' OR '),
+      ' OR subject:invoice OR subject:receipt OR subject:subscription OR subject:renewal OR subject:billing OR subject:charged',
+      ')',
+    ].join(' ');
+
+    this.logger.log(`Scanning Gmail for userId=${userId}`);
+
+    const listRes = await gmail.users.messages.list({
+      userId: 'me',
+      q: query,
+      maxResults: 100,
+    });
+
+    const messages = listRes.data.messages || [];
+    if (messages.length === 0) return [];
+
+    // Fetch snippets for each message (lightweight)
+    const snippets: string[] = [];
+    const batchSize = 20;
+
+    for (let i = 0; i < Math.min(messages.length, 60); i += batchSize) {
+      const batch = messages.slice(i, i + batchSize);
+      const fetched = await Promise.allSettled(
+        batch.map(m =>
+          gmail.users.messages.get({
+            userId: 'me',
+            id: m.id!,
+            format: 'metadata',
+            metadataHeaders: ['From', 'Subject', 'Date'],
+          }),
+        ),
+      );
+
+      for (const result of fetched) {
+        if (result.status === 'fulfilled') {
+          const msg = result.value.data;
+          const headers = msg.payload?.headers || [];
+          const from    = headers.find(h => h.name === 'From')?.value || '';
+          const subject = headers.find(h => h.name === 'Subject')?.value || '';
+          const date    = headers.find(h => h.name === 'Date')?.value || '';
+          const snippet = msg.snippet || '';
+          snippets.push(`From: ${from}\nSubject: ${subject}\nDate: ${date}\nSnippet: ${snippet}`);
+        }
+      }
+    }
+
+    return this.extractWithAI(snippets);
+  }
+
+  async parseCSV(userId: string, fileContent: string): Promise<DetectedSubscription[]> {
+    if (!fileContent || fileContent.trim().length === 0) {
+      throw new BadRequestException('File is empty.');
+    }
+    // Limit size to avoid huge AI prompts
+    const truncated = fileContent.slice(0, 15000);
+    return this.extractWithAI([`CSV/bank statement:\n${truncated}`]);
+  }
+
+  private async extractWithAI(inputs: string[]): Promise<DetectedSubscription[]> {
+    if (inputs.length === 0) return [];
+
+    const combined = inputs.slice(0, 80).join('\n---\n');
+
+    const prompt = `You are a subscription detection expert. Analyze the following email snippets or bank/CSV data and extract recurring subscription services.
+
+Data to analyze:
+${combined}
+
+Return a JSON array of detected subscriptions. Each object must have:
+- name: string (service name, e.g. "Netflix", "Spotify")
+- amount: number (monthly cost in numbers only, estimate if billing cycle differs)
+- currency: string ("USD", "EUR", "GBP", "INR", "CAD", "AUD" — default "USD")
+- billingCycle: "MONTHLY" | "YEARLY" | "QUARTERLY" | "WEEKLY"
+- category: string (e.g. "Streaming", "Music", "Productivity", "Cloud Storage", "Gaming", "News", "Security", "Design", "Development", "Other")
+- confidence: number (0-1, how confident you are this is a real subscription)
+- detectedFrom: string (brief note like "invoice email" or "bank statement")
+
+Rules:
+- Only include items with confidence >= 0.5
+- Deduplicate — return each service once
+- If you see "Adobe Creative Cloud" or just "Adobe", use "Adobe Creative Cloud" as the name
+- Ignore one-time purchases, only recurring subscriptions
+- If yearly price, divide by 12 for monthly amount
+- Return ONLY valid JSON array, no markdown, no explanation`;
+
+    try {
+      const response = await this.openai.chat.completions.create({
+        model: this.model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.1,
+        max_tokens: 2000,
+      });
+
+      const raw = response.choices[0]?.message?.content?.trim() || '[]';
+      // Strip markdown code fences if model adds them
+      const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+      const parsed: any[] = JSON.parse(cleaned);
+
+      return parsed
+        .filter(s => s.name && s.amount > 0 && s.confidence >= 0.5)
+        .map(s => ({
+          name: String(s.name).trim(),
+          amount: Number(s.amount),
+          currency: s.currency || 'USD',
+          billingCycle: s.billingCycle || 'MONTHLY',
+          category: s.category || 'Other',
+          confidence: Number(s.confidence),
+          detectedFrom: s.detectedFrom || 'email scan',
+        }));
+    } catch (err: any) {
+      this.logger.error('AI extraction failed:', err.message);
+      return [];
+    }
+  }
+
+  private createOAuth2Client() {
+    return new google.auth.OAuth2(
+      this.config.get('GOOGLE_CLIENT_ID'),
+      this.config.get('GOOGLE_CLIENT_SECRET'),
+      this.config.get('GMAIL_REDIRECT_URI') ||
+        `${this.config.get('BACKEND_URL') || 'http://localhost:4000'}/api/v1/gmail/callback`,
+    );
+  }
+}
+
+export interface DetectedSubscription {
+  name: string;
+  amount: number;
+  currency: string;
+  billingCycle: string;
+  category: string;
+  confidence: number;
+  detectedFrom: string;
+}

@@ -93,10 +93,25 @@ model User {
   payments      Payment[]
   reminders     Reminder[]
   activityLogs  ActivityLog[]
-  
+  gmailConnection GmailConnection?
+
   @@index([email])
   @@index([googleId])
   @@index([githubId])
+}
+
+model GmailConnection {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gmailEmail   String
+  accessToken  String   @db.Text
+  refreshToken String   @db.Text
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId])
 }
 
 model Session {

@@ -5,7 +5,7 @@ services:
     region: oregon
     plan: free
     rootDir: apps/api
-    buildCommand: npm install && npm run build && npx prisma generate
+    buildCommand: npm install && npm run build && npx prisma generate && npx prisma db push --accept-data-loss
     startCommand: npm run start:prod
     envVars:
       - key: NODE_ENV

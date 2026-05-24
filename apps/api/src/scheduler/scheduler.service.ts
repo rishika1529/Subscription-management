@@ -19,37 +19,43 @@ export class SchedulerService {
    */
   @Cron('0 9 * * *', { name: 'renewal-reminders' })
   async sendRenewalReminders() {
-    this.logger.log('⏰ Running daily renewal reminder job…');
+    return this.runRenewalReminders();
+  }
+
+  /** Extracted so it can be called manually via the admin endpoint. */
+  async runRenewalReminders() {
+    this.logger.log('⏰ Running renewal reminder job…');
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Fetch active subs with next billing date within 7 days
+    // Fetch active subs with next billing date within the next 7 days
     const upcoming = await this.prisma.subscription.findMany({
       where: {
         status: 'ACTIVE',
         nextBillingDate: {
           gte: today,
-          lte: new Date(today.getTime() + 8 * 86400000), // up to 8 days to catch day-7
+          lte: new Date(today.getTime() + 8 * 86400000),
         },
       },
       include: {
-        user: {
-          select: { email: true, firstName: true },
-        },
+        user: { select: { email: true, firstName: true } },
       },
     });
 
     let sent = 0;
     let skipped = 0;
+    const milestones = [7, 3, 1, 0];
 
     for (const sub of upcoming) {
-      // Calculate exact days until renewal (floored to whole days)
-      const msUntil = new Date(sub.nextBillingDate).getTime() - today.getTime();
-      const daysUntil = Math.round(msUntil / 86400000);
+      // Normalize billing date to midnight so time-of-day doesn't skew the diff
+      const nextMidnight = new Date(sub.nextBillingDate);
+      nextMidnight.setHours(0, 0, 0, 0);
+      const daysUntil = Math.round(
+        (nextMidnight.getTime() - today.getTime()) / 86400000,
+      );
 
-      // Only send on these milestone days to avoid daily spam
-      if (![7, 3, 1, 0].includes(daysUntil)) {
+      if (!milestones.includes(daysUntil)) {
         skipped++;
         continue;
       }

@@ -35,7 +35,7 @@ export class EmailService {
   }
 
   async sendVerificationEmail(email: string, token: string) {
-    const verifyUrl = `${this.configService.get('FRONTEND_URL')}/verify-email?token=${token}`;
+    const verifyUrl = `${this.configService.get('FRONTEND_URL')}/auth/verify-email?token=${token}`;
     return this.send({
       to: email,
       subject: 'Verify your Subscription Manager account',
@@ -44,7 +44,7 @@ export class EmailService {
   }
 
   async sendPasswordResetEmail(email: string, token: string) {
-    const resetUrl = `${this.configService.get('FRONTEND_URL')}/reset-password?token=${token}`;
+    const resetUrl = `${this.configService.get('FRONTEND_URL')}/auth/reset-password?token=${token}`;
     return this.send({
       to: email,
       subject: 'Reset your Subscription Manager password',

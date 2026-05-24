@@ -5,7 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   TrendingUp, TrendingDown, Bell, Plus, Calendar, DollarSign,
   LayoutDashboard, Settings, LogOut, BarChart3, CreditCard,
-  Sparkles, Search, X, RefreshCw, User, Menu,
+  Sparkles, Search, X, RefreshCw, User, Menu, Mail, Upload,
+  CheckCircle, AlertCircle, Loader2, Unlink,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { AddSubscriptionModal } from '../../components/subscriptions/AddSubscriptionModal';
@@ -223,12 +224,244 @@ function AIChat() {
   );
 }
 
+// ── Import Panel ──────────────────────────────────────────────────────────────
+function ImportPanel({ onSubscriptionsAdded, toast }: { onSubscriptionsAdded: () => void; toast: any }) {
+  const [gmailStatus, setGmailStatus] = useState<{ connected: boolean; email?: string } | null>(null);
+  const [scanning, setScanning]     = useState(false);
+  const [detected, setDetected]     = useState<any[]>([]);
+  const [adding, setAdding]         = useState<string[]>([]);
+  const [added, setAdded]           = useState<string[]>([]);
+  const [csvText, setCsvText]       = useState('');
+  const [parseCsv, setParseCsv]     = useState(false);
+  const [tab, setTab]               = useState<'gmail'|'csv'>('gmail');
+
+  useEffect(() => {
+    // Check if redirected back from Gmail OAuth
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('gmailConnected')) {
+      window.history.replaceState({}, '', window.location.pathname);
+      toast.success('Gmail connected!');
+    }
+    if (params.get('gmailError')) {
+      toast.error('Gmail error: ' + params.get('gmailError'));
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+    loadStatus();
+  }, []);
+
+  const loadStatus = async () => {
+    try {
+      const res = await api.get('/gmail/status');
+      setGmailStatus(res?.data ?? res);
+    } catch { setGmailStatus({ connected: false }); }
+  };
+
+  const connectGmail = async () => {
+    try {
+      const res = await api.get('/gmail/auth-url');
+      const url = res?.data?.url ?? res?.url;
+      if (url) window.location.href = url;
+    } catch (e: any) { toast.error(e.message || 'Could not get auth URL'); }
+  };
+
+  const disconnectGmail = async () => {
+    try {
+      await api.delete('/gmail/disconnect');
+      setGmailStatus({ connected: false });
+      setDetected([]);
+      toast.success('Gmail disconnected.');
+    } catch (e: any) { toast.error(e.message); }
+  };
+
+  const scanGmail = async () => {
+    setScanning(true);
+    setDetected([]);
+    try {
+      const res = await api.post('/gmail/scan', {});
+      const list = res?.data?.detected ?? res?.detected ?? [];
+      setDetected(list);
+      if (list.length === 0) toast.success('No new subscriptions found in recent emails.');
+    } catch (e: any) { toast.error(e.message || 'Scan failed'); }
+    finally { setScanning(false); }
+  };
+
+  const scanCsv = async () => {
+    if (!csvText.trim()) return;
+    setParseCsv(true);
+    setDetected([]);
+    try {
+      const res = await api.post('/gmail/import-csv', { text: csvText });
+      const list = res?.data?.detected ?? res?.detected ?? [];
+      setDetected(list);
+      if (list.length === 0) toast.success('No subscriptions detected in this data.');
+    } catch (e: any) { toast.error(e.message || 'Parse failed'); }
+    finally { setParseCsv(false); }
+  };
+
+  const addSubscription = async (sub: any) => {
+    if (adding.includes(sub.name) || added.includes(sub.name)) return;
+    setAdding(a => [...a, sub.name]);
+    try {
+      await api.post('/subscriptions', {
+        name: sub.name,
+        amount: sub.amount,
+        currency: sub.currency || 'USD',
+        billingCycle: sub.billingCycle || 'MONTHLY',
+        startDate: new Date().toISOString(),
+      });
+      setAdded(a => [...a, sub.name]);
+      onSubscriptionsAdded();
+      toast.success(`${sub.name} added!`);
+    } catch (e: any) { toast.error(e.message || 'Failed to add subscription'); }
+    finally { setAdding(a => a.filter(n => n !== sub.name)); }
+  };
+
+  const confidenceColor = (c: number) => c >= 0.85 ? '#10b981' : c >= 0.65 ? '#f59e0b' : '#6b7280';
+
+  const card = {
+    background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)',
+    borderRadius: 14, padding: '18px 20px', marginBottom: 12,
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+      <h3 className="section-title" style={{ fontSize: 24, fontWeight: 700, marginBottom: 6 }}>Auto-Import Subscriptions</h3>
+      <p style={{ color: 'var(--text-gray)', fontSize: 14, marginBottom: 24 }}>
+        Scan your Gmail or paste a bank statement — AI detects your subscriptions automatically.
+      </p>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
+        {(['gmail', 'csv'] as const).map(t => (
+          <button key={t} onClick={() => setTab(t)} style={{
+            padding: '10px 20px', borderRadius: 10, border: 'none', cursor: 'pointer',
+            fontFamily: 'var(--font-space-grotesk)', fontSize: 13, fontWeight: 600,
+            background: tab === t ? 'linear-gradient(135deg,#FF0033,#990020)' : 'rgba(255,255,255,0.06)',
+            color: '#fff',
+          }}>
+            {t === 'gmail' ? '📧 Gmail Scan' : '📄 CSV / Bank Statement'}
+          </button>
+        ))}
+      </div>
+
+      {/* Gmail Tab */}
+      {tab === 'gmail' && (
+        <div className="glass-panel" style={{ padding: 28, marginBottom: 28 }}>
+          {gmailStatus === null ? (
+            <p style={{ color: 'var(--text-gray)' }}>Checking Gmail connection…</p>
+          ) : gmailStatus.connected ? (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+                <CheckCircle size={20} color="#10b981" />
+                <div>
+                  <p style={{ fontWeight: 600, margin: 0 }}>Gmail Connected</p>
+                  <p style={{ fontSize: 12, color: 'var(--text-gray)', margin: 0 }}>{gmailStatus.email}</p>
+                </div>
+                <button onClick={disconnectGmail} style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: 'rgba(255,0,51,0.1)', border: '1px solid rgba(255,0,51,0.3)', borderRadius: 8, color: 'var(--primary-red)', fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font-space-grotesk)' }}>
+                  <Unlink size={12} /> Disconnect
+                </button>
+              </div>
+              <button onClick={scanGmail} disabled={scanning} className="btn-red" style={{ display: 'flex', alignItems: 'center', gap: 8, opacity: scanning ? 0.7 : 1 }}>
+                {scanning ? <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Scanning emails…</> : '🔍 Scan Last 180 Days'}
+              </button>
+              {scanning && (
+                <p style={{ color: 'var(--text-gray)', fontSize: 13, marginTop: 12 }}>
+                  Fetching emails and running AI extraction… this takes ~15 seconds.
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              <p style={{ color: 'var(--text-gray)', fontSize: 14, marginBottom: 20, lineHeight: 1.7 }}>
+                Connect your Gmail to automatically detect subscriptions from billing emails like Netflix receipts, Spotify invoices, and renewal notices. We request <strong style={{ color: '#fff' }}>read-only</strong> access — we never store email content.
+              </p>
+              <button onClick={connectGmail} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 24px', background: 'linear-gradient(135deg,#4285f4,#2563eb)', border: 'none', borderRadius: 12, color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-space-grotesk)' }}>
+                <Mail size={18} /> Connect Gmail
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* CSV Tab */}
+      {tab === 'csv' && (
+        <div className="glass-panel" style={{ padding: 28, marginBottom: 28 }}>
+          <p style={{ color: 'var(--text-gray)', fontSize: 14, marginBottom: 16, lineHeight: 1.7 }}>
+            Paste CSV rows, bank statement text, or any transaction data. AI will extract recurring subscriptions.
+          </p>
+          <textarea
+            value={csvText}
+            onChange={e => setCsvText(e.target.value)}
+            placeholder={'Paste CSV or bank statement text here…\n\nExample:\n2024-01-15, Netflix, -13.99\n2024-01-12, Spotify, -9.99\n2024-01-10, Adobe Creative Cloud, -54.99'}
+            style={{ width: '100%', minHeight: 180, padding: '14px 16px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, color: '#fff', fontSize: 13, fontFamily: 'monospace', resize: 'vertical', outline: 'none', boxSizing: 'border-box' }}
+          />
+          <button onClick={scanCsv} disabled={parseCsv || !csvText.trim()} className="btn-red" style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 8, opacity: parseCsv || !csvText.trim() ? 0.6 : 1 }}>
+            {parseCsv ? <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Analysing…</> : <><Upload size={16} /> Extract Subscriptions</>}
+          </button>
+        </div>
+      )}
+
+      {/* Results */}
+      {detected.length > 0 && (
+        <div>
+          <p style={{ fontSize: 11, color: 'var(--text-gray)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 16 }}>
+            {detected.length} subscription{detected.length !== 1 ? 's' : ''} detected — click Add to import
+          </p>
+          {detected.map((sub, i) => (
+            <div key={i} style={card}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(255,0,51,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 700, color: 'var(--primary-red)', flexShrink: 0 }}>
+                  {sub.name.charAt(0)}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <p style={{ fontWeight: 700, margin: 0, fontSize: 15 }}>{sub.name}</p>
+                  <p style={{ fontSize: 12, color: 'var(--text-gray)', margin: '2px 0 0' }}>
+                    {sub.category} · {sub.billingCycle?.charAt(0) + sub.billingCycle?.slice(1).toLowerCase()} · {sub.detectedFrom}
+                  </p>
+                </div>
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <p style={{ fontFamily: 'var(--font-orbitron)', fontSize: 16, color: 'var(--primary-red)', fontWeight: 700, margin: 0 }}>
+                    ${Number(sub.amount).toFixed(2)}/mo
+                  </p>
+                  <p style={{ fontSize: 11, color: confidenceColor(sub.confidence), margin: '2px 0 0' }}>
+                    {Math.round(sub.confidence * 100)}% confidence
+                  </p>
+                </div>
+                <button
+                  onClick={() => addSubscription(sub)}
+                  disabled={adding.includes(sub.name) || added.includes(sub.name)}
+                  style={{
+                    padding: '10px 18px', borderRadius: 10, border: 'none', cursor: added.includes(sub.name) ? 'default' : 'pointer',
+                    background: added.includes(sub.name) ? 'rgba(16,185,129,0.15)' : 'linear-gradient(135deg,#FF0033,#990020)',
+                    color: added.includes(sub.name) ? '#10b981' : '#fff',
+                    fontSize: 13, fontWeight: 600, fontFamily: 'var(--font-space-grotesk)',
+                    opacity: adding.includes(sub.name) ? 0.6 : 1, flexShrink: 0,
+                  }}
+                >
+                  {added.includes(sub.name) ? '✓ Added' : adding.includes(sub.name) ? '…' : 'Add'}
+                </button>
+              </div>
+            </div>
+          ))}
+          <button
+            onClick={() => detected.filter(s => !added.includes(s.name)).forEach(s => addSubscription(s))}
+            style={{ marginTop: 8, padding: '12px 20px', borderRadius: 10, border: '1px solid rgba(255,0,51,0.3)', background: 'transparent', color: 'var(--primary-red)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-space-grotesk)' }}
+          >
+            Add All
+          </button>
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
 // ── Main Dashboard ─────────────────────────────────────────────────────────────
 const NAV = [
   { id: 'dashboard',     icon: LayoutDashboard, label: 'Dashboard' },
   { id: 'subscriptions', icon: CreditCard,       label: 'Subscriptions' },
   { id: 'analytics',     icon: BarChart3,        label: 'Analytics' },
   { id: 'ai',            icon: Sparkles,         label: 'AI Assistant' },
+  { id: 'import',        icon: Mail,             label: 'Auto-Import' },
   { id: 'notifications', icon: Bell,             label: 'Notifications' },
 ];
 
@@ -513,6 +746,12 @@ export default function DashboardPage() {
           {activeNav === 'ai' && (
             <motion.div key="ai" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
               <AIChat />
+            </motion.div>
+          )}
+
+          {activeNav === 'import' && (
+            <motion.div key="import" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+              <ImportPanel onSubscriptionsAdded={loadSubs} toast={toast} />
             </motion.div>
           )}
 

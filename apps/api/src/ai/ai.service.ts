@@ -14,7 +14,14 @@ export class AIService {
   ) {
     this.openai = new OpenAI({
       apiKey: this.configService.get('OPENAI_API_KEY'),
+      baseURL:
+        this.configService.get('OPENAI_BASE_URL') ||
+        'https://generativelanguage.googleapis.com/v1beta/openai/',
     });
+  }
+
+  private get model(): string {
+    return this.configService.get('OPENAI_MODEL') || 'gemini-2.0-flash';
   }
 
   /** Non-streaming chat — used by the dashboard AI chat panel. */
@@ -52,7 +59,7 @@ export class AIService {
       ];
 
       const response = await this.openai.chat.completions.create({
-        model: this.configService.get('OPENAI_MODEL') || 'gpt-4-turbo-preview',
+        model: this.model,
         messages,
         temperature: 0.7,
         max_tokens: 1000,
@@ -105,7 +112,7 @@ export class AIService {
     ];
 
     const stream = await this.openai.chat.completions.create({
-      model: this.configService.get('OPENAI_MODEL') || 'gpt-4-turbo-preview',
+      model: this.model,
       messages,
       stream: true,
       temperature: 0.7,
@@ -165,7 +172,7 @@ Respond with ONLY a number between 0-100.
 
     try {
       const response = await this.openai.chat.completions.create({
-        model: 'gpt-3.5-turbo',
+        model: this.model,
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.3,
         max_tokens: 10,
@@ -242,7 +249,7 @@ Make it conversational, insightful, and actionable. Use emojis sparingly for vis
 
     try {
       const response = await this.openai.chat.completions.create({
-        model: 'gpt-4-turbo-preview',
+        model: this.model,
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.7,
         max_tokens: 1500,
@@ -285,7 +292,7 @@ Be concise and helpful.
 
     try {
       const response = await this.openai.chat.completions.create({
-        model: 'gpt-3.5-turbo',
+        model: this.model,
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.5,
         max_tokens: 300,
