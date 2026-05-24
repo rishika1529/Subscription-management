@@ -148,7 +148,7 @@ export class GmailService {
     const query = [
       'newer_than:180d',
       '(',
-      BILLING_SENDERS.slice(0, 20).map(s => `from:${s}`).join(' OR '),
+      BILLING_SENDERS.map(s => `from:${s}`).join(' OR '),
       ' OR subject:invoice OR subject:receipt OR subject:subscription OR subject:renewal OR subject:billing OR subject:charged',
       ')',
     ].join(' ');
@@ -237,7 +237,8 @@ export class GmailService {
     }
 
     if (allSnippets.length === 0) return [];
-    return this.extractWithAI(allSnippets);
+    // Pass the target name so AI knows exactly what to look for, lower confidence threshold
+    return this.extractWithAI(allSnippets, query);
   }
 
   async parseCSV(userId: string, fileContent: string): Promise<DetectedSubscription[]> {
@@ -249,13 +250,18 @@ export class GmailService {
     return this.extractWithAI([`CSV/bank statement:\n${truncated}`]);
   }
 
-  private async extractWithAI(inputs: string[]): Promise<DetectedSubscription[]> {
+  private async extractWithAI(inputs: string[], targetService?: string): Promise<DetectedSubscription[]> {
     if (inputs.length === 0) return [];
 
     const combined = inputs.slice(0, 80).join('\n---\n');
+    const confidenceThreshold = targetService ? 0.3 : 0.5;
+
+    const targetHint = targetService
+      ? `\nIMPORTANT: The user is specifically looking for "${targetService}". If you find any email related to this service, include it even if the price isn't explicitly visible — make your best estimate based on known pricing for that service (e.g. Crunchyroll ~$7.99/mo, Spotify ~$9.99/mo). Set confidence to at least 0.4 if the email is clearly from/about that service.\n`
+      : '';
 
     const prompt = `You are a subscription detection expert. Analyze the following email snippets or bank/CSV data and extract recurring subscription services.
-
+${targetHint}
 Data to analyze:
 ${combined}
 
@@ -269,7 +275,7 @@ Return a JSON array of detected subscriptions. Each object must have:
 - detectedFrom: string (brief note like "invoice email" or "bank statement")
 
 Rules:
-- Only include items with confidence >= 0.5
+- Only include items with confidence >= ${confidenceThreshold}
 - Deduplicate — return each service once
 - If you see "Adobe Creative Cloud" or just "Adobe", use "Adobe Creative Cloud" as the name
 - Ignore one-time purchases, only recurring subscriptions
@@ -285,12 +291,11 @@ Rules:
       });
 
       const raw = response.choices[0]?.message?.content?.trim() || '[]';
-      // Strip markdown code fences if model adds them
       const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
       const parsed: any[] = JSON.parse(cleaned);
 
       return parsed
-        .filter(s => s.name && s.amount > 0 && s.confidence >= 0.5)
+        .filter(s => s.name && s.amount > 0 && s.confidence >= confidenceThreshold)
         .map(s => ({
           name: String(s.name).trim(),
           amount: Number(s.amount),
