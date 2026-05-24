@@ -307,7 +307,9 @@ function ImportPanel({ onSubscriptionsAdded, toast }: { onSubscriptionsAdded: ()
     setParseCsv(true);
     setDetected([]);
     try {
-      const res = await api.post('/gmail/import-csv', { text: csvText });
+      const form = new FormData();
+      form.append('text', csvText);
+      const res = await api.postForm('/gmail/import-csv', form);
       const list = res?.data?.detected ?? res?.detected ?? [];
       setDetected(list);
       if (list.length === 0) toast.success('No subscriptions detected in this data.');

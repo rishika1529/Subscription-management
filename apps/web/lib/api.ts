@@ -25,7 +25,8 @@ async function apiFetch<T = any>(path: string, options: RequestInit = {}): Promi
     ...options,
     credentials: 'include',
     headers: {
-      'Content-Type': 'application/json',
+      // Don't set Content-Type for FormData — browser sets it with boundary automatically
+      ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options.headers as Record<string, string> || {}),
     },
@@ -48,6 +49,7 @@ async function apiFetch<T = any>(path: string, options: RequestInit = {}): Promi
 export const api = {
   get:    <T = any>(path: string)              => apiFetch<T>(path),
   post:   <T = any>(path: string, body: any)   => apiFetch<T>(path, { method: 'POST',   body: JSON.stringify(body) }),
+  postForm: <T = any>(path: string, form: FormData) => apiFetch<T>(path, { method: 'POST', body: form }),
   patch:  <T = any>(path: string, body: any)   => apiFetch<T>(path, { method: 'PATCH',  body: JSON.stringify(body) }),
   delete: <T = any>(path: string)              => apiFetch<T>(path, { method: 'DELETE' }),
 };
