@@ -19,6 +19,13 @@ function getInitials(name: string) {
   return name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
 }
 
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  USD: '$', EUR: '€', GBP: '£', INR: '₹', CAD: 'CA$', AUD: 'A$',
+};
+function currencySymbol(code?: string) {
+  return CURRENCY_SYMBOLS[code?.toUpperCase() ?? ''] ?? code ?? '$';
+}
+
 function daysUntil(dateStr: string) {
   return Math.ceil((new Date(dateStr).getTime() - Date.now()) / 86400000);
 }
@@ -80,7 +87,7 @@ function SubCard({ sub, onEdit, onDelete, delay = 0 }: { sub: any; onEdit: (sub:
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
           <span style={{ fontSize: 12, color: 'var(--text-gray)' }}>Monthly Cost</span>
           <span style={{ fontFamily: 'var(--font-orbitron)', fontSize: 17, color: 'var(--primary-red)', fontWeight: 700 }}>
-            ${Number(sub.amount).toFixed(2)}
+            {currencySymbol(sub.currency)}{Number(sub.amount).toFixed(2)}
           </span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -491,7 +498,7 @@ function ImportPanel({ onSubscriptionsAdded, toast }: { onSubscriptionsAdded: ()
                 </div>
                 <div style={{ textAlign: 'right', flexShrink: 0 }}>
                   <p style={{ fontFamily: 'var(--font-orbitron)', fontSize: 16, color: 'var(--primary-red)', fontWeight: 700, margin: 0 }}>
-                    ${Number(sub.amount).toFixed(2)}/mo
+                    {currencySymbol(sub.currency)}{Number(sub.amount).toFixed(2)}/mo
                   </p>
                   <p style={{ fontSize: 11, color: confidenceColor(sub.confidence), margin: '2px 0 0' }}>
                     {Math.round(sub.confidence * 100)}% confidence
@@ -842,7 +849,7 @@ export default function DashboardPage() {
                           <div style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--primary-red)', flexShrink: 0 }} />
                           <div style={{ flex: 1 }}>
                             <p style={{ fontWeight: 600, margin: 0, fontSize: 14 }}>{s.name}</p>
-                            <p style={{ fontSize: 12, color: 'var(--text-gray)', margin: 0 }}>Renews in {d === 0 ? 'today' : `${d} day${d !== 1 ? 's' : ''}`} — ${Number(s.amount).toFixed(2)}</p>
+                            <p style={{ fontSize: 12, color: 'var(--text-gray)', margin: 0 }}>Renews in {d === 0 ? 'today' : `${d} day${d !== 1 ? 's' : ''}`} — {currencySymbol(s.currency)}{Number(s.amount).toFixed(2)}</p>
                           </div>
                           <span style={{ fontSize: 11, fontFamily: 'var(--font-orbitron)', color: 'var(--primary-red)', fontWeight: 700 }}>{d === 0 ? 'TODAY' : `${d}d`}</span>
                         </div>
