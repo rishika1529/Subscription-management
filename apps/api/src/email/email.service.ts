@@ -14,11 +14,15 @@ export class EmailService {
 
     this.fromAddress = `SubTrack Pro <${gmailUser}>`;
 
+    // Force IPv4 — Render free tier blocks outbound IPv6
     this.transporter = nodemailer.createTransport({
-      service: 'gmail',
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false,
+      family: 4,
       auth: {
         user: gmailUser,
-        pass: gmailPass,   // 16-char App Password (no spaces)
+        pass: gmailPass,
       },
     });
   }
