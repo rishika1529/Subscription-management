@@ -15,10 +15,11 @@ export class EmailService {
     this.fromAddress = `SubTrack Pro <${gmailUser}>`;
 
     // Force IPv4 — Render free tier blocks outbound IPv6
+    // dns.setDefaultResultOrder('ipv4first') is set globally in main.ts
     this.transporter = nodemailer.createTransport({
       host: 'smtp.gmail.com',
-      port: 587,
-      secure: false,
+      port: 465,
+      secure: true,   // SSL on 465 is more reliable than STARTTLS on 587
       family: 4,
       auth: {
         user: gmailUser,

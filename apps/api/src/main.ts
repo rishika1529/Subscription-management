@@ -1,3 +1,7 @@
+import * as dns from 'dns';
+// Render free tier blocks IPv6 outbound — force IPv4 for all DNS lookups
+dns.setDefaultResultOrder('ipv4first');
+
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
