@@ -259,7 +259,7 @@ export class GmailService {
     const confidenceThreshold = targetService ? 0.2 : 0.3;
 
     const targetHint = targetService
-      ? `\nIMPORTANT: The user is specifically looking for "${targetService}". If you find any email related to this service, include it even if the price isn't explicitly visible — make your best estimate based on known pricing for that service (e.g. Crunchyroll ~$7.99/mo, Spotify ~$9.99/mo). Set confidence to at least 0.4 if the email is clearly from/about that service.\n`
+      ? `\nIMPORTANT: The user is specifically looking for "${targetService}". Include it even if the price is not explicitly shown — use the ACTUAL currency and amount from the email (e.g. INR if you see ₹, not USD). Set confidence to at least 0.5 if the email is clearly from/about that service.\n`
       : '';
 
     const prompt = `You are a subscription detection expert. Analyze the following email snippets or bank/CSV data and extract recurring subscription services.
@@ -267,22 +267,24 @@ ${targetHint}
 Data to analyze:
 ${combined}
 
-Return a JSON array of detected subscriptions. Each object must have:
+Respond with a JSON object in this exact shape:
+{ "subscriptions": [ ...items... ] }
+
+Each item must have:
 - name: string (service name, e.g. "Netflix", "Spotify")
-- amount: number (monthly cost in numbers only, estimate if billing cycle differs)
-- currency: string ("USD", "EUR", "GBP", "INR", "CAD", "AUD" — default "USD")
+- amount: number (monthly cost as a plain number — use the ACTUAL amount from the data, not a US estimate)
+- currency: string — CRITICAL: detect from symbols (₹=INR, €=EUR, £=GBP, $=USD, default USD)
 - billingCycle: "MONTHLY" | "YEARLY" | "QUARTERLY" | "WEEKLY"
 - category: string (e.g. "Streaming", "Music", "Productivity", "Cloud Storage", "Gaming", "News", "Security", "Design", "Development", "Other")
-- confidence: number (0-1, how confident you are this is a real subscription)
-- detectedFrom: string (brief note like "invoice email" or "bank statement")
+- confidence: number 0-1
+- detectedFrom: string (e.g. "invoice email", "bank statement")
 
 Rules:
-- Only include items with confidence >= ${confidenceThreshold} (be generous — if the data clearly shows a subscription, set confidence 0.7+)
+- Only include items with confidence >= ${confidenceThreshold}
 - Deduplicate — return each service once
-- If you see "Adobe Creative Cloud" or just "Adobe", use "Adobe Creative Cloud" as the name
 - Ignore one-time purchases, only recurring subscriptions
 - If yearly price, divide by 12 for monthly amount
-- Return ONLY valid JSON array, no markdown, no explanation`;
+- Use exact amounts and currencies seen in the data — do NOT convert to USD`;
 
     try {
       const response = await this.openai.chat.completions.create({
@@ -290,19 +292,26 @@ Rules:
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.1,
         max_tokens: 2000,
+        response_format: { type: 'json_object' },
       });
 
-      const raw = response.choices[0]?.message?.content?.trim() || '[]';
-      // Strip markdown fences
-      let cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
-      // If model returned text before/after the JSON array, extract just the array
-      if (!cleaned.startsWith('[')) {
-        const match = cleaned.match(/\[[\s\S]*\]/);
-        cleaned = match ? match[0] : '[]';
+      const raw = response.choices[0]?.message?.content?.trim() || '{"subscriptions":[]}';
+      let parsed: any;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        // Fallback: try to extract JSON object from text
+        const match = raw.match(/\{[\s\S]*\}/);
+        parsed = match ? JSON.parse(match[0]) : { subscriptions: [] };
       }
-      const parsed: any[] = JSON.parse(cleaned);
 
-      return parsed
+      const items: any[] = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(parsed?.subscriptions)
+        ? parsed.subscriptions
+        : [];
+
+      return items
         .filter(s => s.name && s.amount > 0 && s.confidence >= confidenceThreshold)
         .map(s => ({
           name: String(s.name).trim(),
