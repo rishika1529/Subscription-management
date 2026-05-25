@@ -1,18 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Resend } from 'resend';
 
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
-  private resend: Resend;
-  private fromAddress: string;
+  private brevoApiKey: string;
+  private fromEmail: string;
+  private fromName = 'SubTrack Pro';
 
   constructor(private configService: ConfigService) {
-    this.resend = new Resend(this.configService.get('RESEND_API_KEY'));
-    // onboarding@resend.dev can send to ANY email address on free tier
-    this.fromAddress =
-      this.configService.get('EMAIL_FROM') || 'SubTrack Pro <onboarding@resend.dev>';
+    this.brevoApiKey = this.configService.get('BREVO_API_KEY') || '';
+    this.fromEmail   = this.configService.get('BREVO_FROM_EMAIL') || '';
   }
 
   // ── Public send methods ────────────────────────────────────────────────────
@@ -91,23 +89,39 @@ export class EmailService {
     });
   }
 
-  // ── Core send (calls Resend directly — no queue) ───────────────────────────
+  // ── Core send (Brevo HTTP API — works on Render free tier) ──────────────────
 
   private async send(data: { to: string; subject: string; html: string }) {
+    if (!this.brevoApiKey) {
+      this.logger.warn('BREVO_API_KEY not set — skipping email send');
+      return { success: false, error: 'BREVO_API_KEY not configured' };
+    }
     try {
       this.logger.log(`Sending email to ${data.to} | subject: "${data.subject}"`);
-      const { data: result, error } = await this.resend.emails.send({
-        from: this.fromAddress,
-        to: data.to,
-        subject: data.subject,
-        html: data.html,
+      const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+          'accept':       'application/json',
+          'api-key':      this.brevoApiKey,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          sender:      { name: this.fromName, email: this.fromEmail },
+          to:          [{ email: data.to }],
+          subject:     data.subject,
+          htmlContent: data.html,
+        }),
       });
-      if (error) {
-        this.logger.error(`Resend rejected email to ${data.to}: ${JSON.stringify(error)}`);
-        return { success: false, error };
+
+      if (!res.ok) {
+        const body = await res.text();
+        this.logger.error(`Brevo rejected email to ${data.to}: ${res.status} ${body}`);
+        return { success: false, error: body };
       }
-      this.logger.log(`✅ Email delivered to ${data.to} — Resend id: ${result?.id}`);
-      return { success: true, id: result?.id };
+
+      const result: any = await res.json();
+      this.logger.log(`✅ Email delivered to ${data.to} — Brevo messageId: ${result?.messageId}`);
+      return { success: true, id: result?.messageId };
     } catch (err: any) {
       this.logger.error(`Email send failed for ${data.to}: ${err.message}`);
       return { success: false, error: err.message };
