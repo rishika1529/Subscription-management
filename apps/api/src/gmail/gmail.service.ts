@@ -212,10 +212,12 @@ export class GmailService {
         });
 
         const gmail = google.gmail({ version: 'v1', auth: oauth2 });
-        const gmailQuery = `newer_than:180d (subject:${query} OR from:${query} OR "${query}")`;
+        // Search broadly — no strict time limit, case-insensitive, body + subject + sender
+        const gmailQuery = `(subject:${query} OR from:${query} OR ${query}) newer_than:365d`;
 
         const listRes = await gmail.users.messages.list({ userId: 'me', q: gmailQuery, maxResults: 30 });
         const messages = listRes.data.messages || [];
+        this.logger.log(`Search "${query}" in ${conn.gmailEmail}: found ${messages.length} messages`);
 
         const fetched = await Promise.allSettled(
           messages.slice(0, 20).map(m =>
