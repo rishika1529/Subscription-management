@@ -1,19 +1,26 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Resend } from 'resend';
+import * as nodemailer from 'nodemailer';
 
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
-  private resend: Resend;
+  private transporter: nodemailer.Transporter;
   private fromAddress: string;
 
   constructor(private configService: ConfigService) {
-    this.resend = new Resend(this.configService.get('RESEND_API_KEY'));
-    // Resend's pre-verified test sender works for development.
-    // In production, replace with a verified domain sender.
-    this.fromAddress =
-      this.configService.get('EMAIL_FROM') || 'onboarding@resend.dev';
+    const gmailUser = this.configService.get('GMAIL_USER');
+    const gmailPass = this.configService.get('GMAIL_APP_PASSWORD');
+
+    this.fromAddress = `SubTrack Pro <${gmailUser}>`;
+
+    this.transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: gmailUser,
+        pass: gmailPass,   // 16-char App Password (no spaces)
+      },
+    });
   }
 
   // ── Public send methods ────────────────────────────────────────────────────
@@ -97,22 +104,16 @@ export class EmailService {
   private async send(data: { to: string; subject: string; html: string }) {
     try {
       this.logger.log(`Sending email to ${data.to} | subject: "${data.subject}"`);
-      const { data: result, error } = await this.resend.emails.send({
+      const info = await this.transporter.sendMail({
         from: this.fromAddress,
         to: data.to,
         subject: data.subject,
         html: data.html,
       });
-      if (error) {
-        this.logger.error(
-          `Resend rejected email to ${data.to}: ${JSON.stringify(error)}`,
-        );
-        return { success: false, error };
-      }
-      this.logger.log(`✅ Email delivered to ${data.to} — Resend id: ${result?.id}`);
-      return { success: true, id: result?.id };
+      this.logger.log(`✅ Email delivered to ${data.to} — messageId: ${info.messageId}`);
+      return { success: true, id: info.messageId };
     } catch (err: any) {
-      this.logger.error(`Email send threw for ${data.to}: ${err.message}`);
+      this.logger.error(`Email send failed for ${data.to}: ${err.message}`);
       return { success: false, error: err.message };
     }
   }
