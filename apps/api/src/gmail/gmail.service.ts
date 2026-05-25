@@ -275,6 +275,7 @@ Each item must have:
 - amount: number (monthly cost as a plain number — use the ACTUAL amount from the data, not a US estimate)
 - currency: string — CRITICAL: detect from symbols (₹=INR, €=EUR, £=GBP, $=USD, default USD)
 - billingCycle: "MONTHLY" | "YEARLY" | "QUARTERLY" | "WEEKLY"
+- nextBillingDate: string (ISO 8601 date e.g. "2026-06-05" — calculate from the email date + billing cycle. If email date is May 5 and billing is MONTHLY, next is June 5. If unknown, use today + 30 days)
 - category: string (e.g. "Streaming", "Music", "Productivity", "Cloud Storage", "Gaming", "News", "Security", "Design", "Development", "Other")
 - confidence: number 0-1
 - detectedFrom: string (e.g. "invoice email", "bank statement")
@@ -318,6 +319,7 @@ Rules:
           amount: Number(s.amount),
           currency: s.currency || 'USD',
           billingCycle: s.billingCycle || 'MONTHLY',
+          nextBillingDate: s.nextBillingDate || undefined,
           category: s.category || 'Other',
           confidence: Number(s.confidence),
           detectedFrom: s.detectedFrom || 'email scan',
@@ -343,6 +345,7 @@ export interface DetectedSubscription {
   amount: number;
   currency: string;
   billingCycle: string;
+  nextBillingDate?: string;
   category: string;
   confidence: number;
   detectedFrom: string;

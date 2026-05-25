@@ -334,6 +334,7 @@ function ImportPanel({ onSubscriptionsAdded, toast }: { onSubscriptionsAdded: ()
         currency: sub.currency || 'USD',
         billingCycle: sub.billingCycle || 'MONTHLY',
         startDate: new Date().toISOString(),
+        ...(sub.nextBillingDate ? { nextBillingDate: sub.nextBillingDate } : {}),
       });
       setAdded(a => [...a, sub.name]);
       onSubscriptionsAdded();

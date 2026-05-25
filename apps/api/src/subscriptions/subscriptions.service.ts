@@ -35,17 +35,19 @@ export class SubscriptionsService {
       );
     }
 
-    // Calculate next billing date
-    const nextBillingDate = this.calculateNextBillingDate(
-      new Date(dto.startDate),
-      dto.billingCycle,
-    );
+    // Use provided nextBillingDate or calculate from startDate + billingCycle
+    const nextBillingDate = dto.nextBillingDate
+      ? new Date(dto.nextBillingDate)
+      : this.calculateNextBillingDate(new Date(dto.startDate), dto.billingCycle);
+
+    // Strip nextBillingDate from dto so it doesn't conflict with our computed value
+    const { nextBillingDate: _nbd, ...dtoRest } = dto as any;
 
     // Create subscription
     const subscription = await this.prisma.subscription.create({
       data: {
         userId,
-        ...dto,
+        ...dtoRest,
         nextBillingDate,
       },
       include: {

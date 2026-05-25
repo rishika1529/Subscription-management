@@ -86,6 +86,10 @@ export class CreateSubscriptionDto {
   @IsBoolean()
   @IsOptional()
   emailReminders?: boolean;
+
+  @IsDateString()
+  @IsOptional()
+  nextBillingDate?: string;
 }
 
 export class UpdateSubscriptionDto {
