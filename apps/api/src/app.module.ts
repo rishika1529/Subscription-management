@@ -15,6 +15,7 @@ import { DatabaseModule } from './database/database.module';
 import { CacheModule } from './cache/cache.module';
 import { SchedulerModule } from './scheduler/scheduler.module';
 import { GmailModule } from './gmail/gmail.module';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
@@ -73,6 +74,7 @@ import { GmailModule } from './gmail/gmail.module';
     EmailModule,
     SchedulerModule,
     GmailModule,
+    HealthModule,
   ],
 })
 export class AppModule {}
