@@ -3,12 +3,16 @@ import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../database/prisma.service';
 import { EmailService } from '../email/email.service';
 
-// Map of "days until renewal" → reminder label stored in DB
+// Map of "days until renewal" → reminder label stored in DB.
+// Negative values are catch-up reminders for days the scheduler missed
+// (e.g. Render free-tier dyno was asleep when the cron fired).
 const REMINDER_MILESTONES: Record<number, string> = {
   7: '7_days',
   3: '3_days',
   1: '1_day',
   0: 'due_today',
+  [-1]: 'overdue_catchup_1d',
+  [-2]: 'overdue_catchup_2d',
 };
 
 @Injectable()
@@ -20,11 +24,117 @@ export class SchedulerService {
     private emailService: EmailService,
   ) {}
 
-  /**
-   * Runs every 6 hours so it catches up even after Render free-tier sleep.
-   * Deduplication is done via the Reminder table — each (subscription, type)
-   * pair is only emailed once.
-   */
+  // ─────────────────────────────────────────────────────────────────────────
+  // AUTO-RENEWAL JOB
+  // Runs every 6 hours.  For every ACTIVE subscription whose nextBillingDate
+  // has already passed, the date is rolled forward by one billing cycle,
+  // a RenewalHistory row is written, and a confirmation email is sent.
+  // The subscription stays ACTIVE — it is "auto-renewed" until the user
+  // explicitly deletes or edits it.
+  // ─────────────────────────────────────────────────────────────────────────
+  @Cron('30 */6 * * *', { name: 'auto-renewals' })
+  async processAutoRenewals() {
+    return this.runAutoRenewals();
+  }
+
+  /** Public so the admin endpoint can trigger it manually. */
+  async runAutoRenewals() {
+    this.logger.log('🔄 Running auto-renewal job…');
+
+    const now = new Date();
+
+    // Find all ACTIVE subscriptions whose billing date is in the past.
+    const overdue = await this.prisma.subscription.findMany({
+      where: {
+        status: 'ACTIVE',
+        nextBillingDate: { lt: now },
+      },
+      include: {
+        user: { select: { id: true, email: true, firstName: true } },
+      },
+    });
+
+    this.logger.log(`Found ${overdue.length} subscription(s) to auto-renew.`);
+
+    let renewed = 0;
+    let failed = 0;
+
+    for (const sub of overdue) {
+      try {
+        // Calculate the next billing date from the CURRENT nextBillingDate
+        // (not from today) so we don't drift if the job was delayed.
+        const newNextDate = this.advanceBillingDate(
+          new Date(sub.nextBillingDate),
+          sub.billingCycle,
+        );
+
+        // Roll the subscription forward.
+        await this.prisma.subscription.update({
+          where: { id: sub.id },
+          data: {
+            nextBillingDate: newNextDate,
+            status: 'ACTIVE', // ensure it stays ACTIVE
+          },
+        });
+
+        // Record renewal history.
+        await this.prisma.renewalHistory.create({
+          data: {
+            subscriptionId: sub.id,
+            renewedAt: now,
+            amount: sub.amount,
+            currency: sub.currency,
+            success: true,
+            metadata: {
+              previousDate: sub.nextBillingDate,
+              newDate: newNextDate,
+              autoRenewed: true,
+            },
+          },
+        });
+
+        // Clear old reminder dedup rows so fresh reminders fire for the
+        // new billing cycle.
+        await this.prisma.reminder.deleteMany({
+          where: { subscriptionId: sub.id },
+        });
+
+        // Send a renewal confirmation email (fire-and-forget).
+        const email = sub.user?.email;
+        if (email) {
+          this.emailService
+            .sendSubscriptionRenewedEmail(email, sub, newNextDate)
+            .catch((err) =>
+              this.logger.error(
+                `Failed to send renewal email for "${sub.name}": ${err.message}`,
+              ),
+            );
+        }
+
+        this.logger.log(
+          `✅ Auto-renewed "${sub.name}" → next date: ${newNextDate.toISOString().slice(0, 10)}`,
+        );
+        renewed++;
+      } catch (err: any) {
+        this.logger.error(
+          `❌ Failed to auto-renew "${sub.name}" (${sub.id}): ${err.message}`,
+        );
+        failed++;
+      }
+    }
+
+    this.logger.log(
+      `🔄 Auto-renewal job done — renewed: ${renewed}, failed: ${failed}`,
+    );
+    return { renewed, failed };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // RENEWAL REMINDER JOB
+  // Runs every 6 hours so it catches up even after Render free-tier sleep.
+  // Deduplication is done via the Reminder table — each (subscription, type)
+  // pair is only emailed once per billing cycle.
+  // ─────────────────────────────────────────────────────────────────────────
   @Cron('0 */6 * * *', { name: 'renewal-reminders' })
   async sendRenewalReminders() {
     return this.runRenewalReminders();
@@ -37,12 +147,15 @@ export class SchedulerService {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Fetch all active subscriptions renewing within the next 8 days
+    // Fetch active subscriptions renewing within a window that includes
+    // a 2-day grace period for missed days (Render sleep, deploy gaps, etc.).
+    // NOTE: We no longer look back further than 2 days because overdue subs
+    // are handled by the auto-renewal job above.
     const upcoming = await this.prisma.subscription.findMany({
       where: {
         status: 'ACTIVE',
         nextBillingDate: {
-          gte: today,
+          gte: new Date(today.getTime() - 2 * 86_400_000),
           lte: new Date(today.getTime() + 8 * 86_400_000),
         },
       },
@@ -92,9 +205,26 @@ export class SchedulerService {
       }
 
       try {
-        await this.emailService.sendRenewalReminder(email, sub, daysUntil);
+        const result = await this.emailService.sendRenewalReminder(
+          email,
+          sub,
+          daysUntil,
+        );
 
-        // Record in Reminder table so we don't send again
+        // CRITICAL: only record dedup row if the email actually went out.
+        // EmailService returns { success: false, error } instead of throwing
+        // on missing API key, Brevo rejection, etc. Recording dedup on those
+        // failures would permanently silence this subscription's reminders.
+        if (!result || result.success !== true) {
+          this.logger.error(
+            `❌ Reminder NOT sent to ${email} for "${sub.name}" — ${
+              result?.error ?? 'unknown error'
+            }. Will retry on next cron run.`,
+          );
+          skipped++;
+          continue;
+        }
+
         await this.prisma.reminder.create({
           data: {
             userId,
@@ -122,5 +252,36 @@ export class SchedulerService {
       `✅ Renewal reminder job done — sent: ${sent}, skipped: ${skipped}`,
     );
     return { sent, skipped };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // HELPERS
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Advance a billing date by exactly one cycle.
+   * We advance from the STORED date (not today) so the schedule never drifts
+   * even if the cron fires late.
+   */
+  private advanceBillingDate(from: Date, billingCycle: string): Date {
+    const d = new Date(from);
+    switch (billingCycle) {
+      case 'WEEKLY':
+        d.setDate(d.getDate() + 7);
+        break;
+      case 'MONTHLY':
+        d.setMonth(d.getMonth() + 1);
+        break;
+      case 'QUARTERLY':
+        d.setMonth(d.getMonth() + 3);
+        break;
+      case 'YEARLY':
+        d.setFullYear(d.getFullYear() + 1);
+        break;
+      default:
+        // ONE_TIME or unknown — push 1 month forward as a safe default
+        d.setMonth(d.getMonth() + 1);
+    }
+    return d;
   }
 }

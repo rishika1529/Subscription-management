@@ -19,9 +19,47 @@ export class SchedulerController {
    */
   @Post('run-renewal-reminders')
   async runRenewalReminders(@Headers('x-cron-secret') secret: string) {
+    this.verifyCronSecret(secret);
+    const result = await this.scheduler.runRenewalReminders();
+    return { success: true, message: 'Renewal reminder job executed.', ...result };
+  }
+
+  /**
+   * Manually trigger the auto-renewal job.
+   * Same CRON_SECRET protection.
+   * Header: x-cron-secret: <your CRON_SECRET env var>
+   */
+  @Post('run-auto-renewals')
+  async runAutoRenewals(@Headers('x-cron-secret') secret: string) {
+    this.verifyCronSecret(secret);
+    const result = await this.scheduler.runAutoRenewals();
+    return { success: true, message: 'Auto-renewal job executed.', ...result };
+  }
+
+  /**
+   * Combined endpoint — runs auto-renewals first (so overdue subs get
+   * rolled forward), then sends reminders for the new billing cycle.
+   * Best used as the single cron-job.org target URL.
+   * Header: x-cron-secret: <your CRON_SECRET env var>
+   */
+  @Post('run-all')
+  async runAll(@Headers('x-cron-secret') secret: string) {
+    this.verifyCronSecret(secret);
+    const renewals = await this.scheduler.runAutoRenewals();
+    const reminders = await this.scheduler.runRenewalReminders();
+    return {
+      success: true,
+      message: 'All scheduler jobs executed.',
+      renewals,
+      reminders,
+    };
+  }
+
+  /** Shared secret validation */
+  private verifyCronSecret(secret: string) {
     const expected = this.config.get<string>('CRON_SECRET');
-    if (!expected || secret !== expected) throw new UnauthorizedException('Invalid cron secret');
-    await this.scheduler.runRenewalReminders();
-    return { success: true, message: 'Renewal reminder job executed.' };
+    if (!expected || secret !== expected) {
+      throw new UnauthorizedException('Invalid cron secret');
+    }
   }
 }

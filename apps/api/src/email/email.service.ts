@@ -81,6 +81,17 @@ export class EmailService {
     });
   }
 
+  async sendSubscriptionRenewedEmail(email: string, subscription: any, newNextDate: Date) {
+    const nextDateStr = newNextDate.toLocaleDateString('en-US', {
+      month: 'long', day: 'numeric', year: 'numeric',
+    });
+    return this.send({
+      to: email,
+      subject: `🔄 ${subscription.name} has been auto-renewed`,
+      html: this.getSubscriptionRenewedTemplate(subscription, nextDateStr),
+    });
+  }
+
   async sendMonthlyReport(email: string, report: string) {
     return this.send({
       to: email,
@@ -95,6 +106,10 @@ export class EmailService {
     if (!this.brevoApiKey) {
       this.logger.warn('BREVO_API_KEY not set — skipping email send');
       return { success: false, error: 'BREVO_API_KEY not configured' };
+    }
+    if (!this.fromEmail) {
+      this.logger.warn('BREVO_FROM_EMAIL not set — skipping email send');
+      return { success: false, error: 'BREVO_FROM_EMAIL not configured' };
     }
     try {
       this.logger.log(`Sending email to ${data.to} | subject: "${data.subject}"`);
@@ -116,7 +131,7 @@ export class EmailService {
       if (!res.ok) {
         const body = await res.text();
         this.logger.error(`Brevo rejected email to ${data.to}: ${res.status} ${body}`);
-        return { success: false, error: body };
+        return { success: false, error: `Brevo ${res.status}: ${body.slice(0, 300)}` };
       }
 
       const result: any = await res.json();
@@ -390,6 +405,47 @@ export class EmailService {
       <div class="hdr"><h1>📊 Monthly Report</h1></div>
       <div class="body"><p>${htmlReport}</p>
         <center><a href="${dashUrl}/dashboard" class="btn">View Dashboard</a></center>
+      </div>
+      <div class="footer"><p>© 2026 Subscription Manager</p></div>
+    </div></body></html>`.trim();
+  }
+
+  private getSubscriptionRenewedTemplate(subscription: any, nextDateStr: string): string {
+    const dashboardUrl = this.configService.get('FRONTEND_URL') || 'http://localhost:3000';
+    const monthly =
+      subscription.billingCycle === 'YEARLY'    ? subscription.amount / 12
+      : subscription.billingCycle === 'QUARTERLY' ? subscription.amount / 3
+      : subscription.billingCycle === 'WEEKLY'    ? (subscription.amount * 52) / 12
+      : subscription.amount;
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+      body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#000;color:#fff;margin:0;padding:0}
+      .wrap{max-width:600px;margin:40px auto;background:linear-gradient(135deg,#1a1a1a,#0f0f0f);border:1px solid #222;border-radius:16px;overflow:hidden}
+      .hdr{background:linear-gradient(135deg,#10b981,#059669);padding:40px;text-align:center}
+      .hdr h1{margin:0;font-size:26px;font-weight:700}
+      .body{padding:40px}
+      .body p{line-height:1.7;color:#aaa;font-size:15px;margin:0 0 12px}
+      .card{background:#1a1a1a;border:1px solid #333;border-radius:14px;padding:24px;margin:20px 0}
+      .row{display:flex;justify-content:space-between;margin:8px 0;font-size:14px}
+      .row span{color:#888} .row strong{color:#fff}
+      .price{font-size:28px;font-weight:700;color:#10b981;text-align:center;margin:12px 0}
+      .badge{display:inline-block;padding:4px 12px;background:#10b981;color:#fff;border-radius:6px;font-size:12px;font-weight:600;margin-bottom:8px}
+      .btn{display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#FF0033,#990020);color:#fff!important;text-decoration:none;border-radius:10px;font-weight:700;font-size:14px;margin:4px}
+      .note{background:#1a1a2e;border-left:4px solid #3b82f6;padding:14px;margin:20px 0;border-radius:4px;font-size:13px;color:#94a3b8}
+      .footer{padding:24px 40px;background:#0a0a0a;text-align:center;font-size:13px;color:#555}
+    </style></head><body><div class="wrap">
+      <div class="hdr"><h1>🔄 Auto-Renewed</h1></div>
+      <div class="body">
+        <center><span class="badge">Auto-Renewed</span></center>
+        <p>Your <strong style="color:#fff">${subscription.name}</strong> subscription has been automatically renewed. No action needed on your end!</p>
+        <div class="card">
+          <div class="row"><span>Service</span><strong>${subscription.name}</strong></div>
+          <div class="row"><span>Amount</span><strong>$${Number(subscription.amount).toFixed(2)} ${subscription.currency || 'USD'}</strong></div>
+          <div class="row"><span>Billing</span><strong>${subscription.billingCycle || 'Monthly'}</strong></div>
+          <div class="row"><span>Next Renewal</span><strong>${nextDateStr}</strong></div>
+          <div class="price">$${monthly.toFixed(2)}<span style="font-size:14px;color:#888">/mo</span></div>
+        </div>
+        <div class="note">💡 Want to cancel or change this? Just edit or delete the subscription from your dashboard at any time.</div>
+        <center><a href="${dashboardUrl}/dashboard" class="btn">Manage Subscriptions</a></center>
       </div>
       <div class="footer"><p>© 2026 Subscription Manager</p></div>
     </div></body></html>`.trim();
