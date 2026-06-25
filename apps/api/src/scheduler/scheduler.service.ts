@@ -47,6 +47,7 @@ export class SchedulerService {
     const overdue = await this.prisma.subscription.findMany({
       where: {
         status: 'ACTIVE',
+        autoRenew: true,
         nextBillingDate: { lt: now },
       },
       include: {

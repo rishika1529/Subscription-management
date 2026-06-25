@@ -1,16 +1,24 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Resend } from 'resend';
 
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
   private brevoApiKey: string;
-  private fromEmail: string;
+  private brevoFromEmail: string;
+  private resend: Resend | null = null;
+  private resendFromEmail: string;
   private fromName = 'SubTrack Pro';
 
   constructor(private configService: ConfigService) {
     this.brevoApiKey = this.configService.get('BREVO_API_KEY') || '';
-    this.fromEmail   = this.configService.get('BREVO_FROM_EMAIL') || '';
+    this.brevoFromEmail = this.configService.get('BREVO_FROM_EMAIL') || '';
+    const resendKey = this.configService.get('RESEND_API_KEY');
+    if (resendKey) {
+      this.resend = new Resend(resendKey);
+    }
+    this.resendFromEmail = this.configService.get('EMAIL_FROM') || 'onboarding@resend.dev';
   }
 
   // ── Public send methods ────────────────────────────────────────────────────
@@ -103,27 +111,53 @@ export class EmailService {
   // ── Core send (Brevo HTTP API — works on Render free tier) ──────────────────
 
   private async send(data: { to: string; subject: string; html: string }) {
-    if (!this.brevoApiKey) {
-      this.logger.warn('BREVO_API_KEY not set — skipping email send');
-      return { success: false, error: 'BREVO_API_KEY not configured' };
+    const useResend = !!this.resend;
+
+    if (useResend) {
+      try {
+        this.logger.log(`Sending email via Resend to ${data.to} | subject: "${data.subject}"`);
+        const { data: result, error } = await this.resend!.emails.send({
+          from: this.resendFromEmail,
+          to: data.to,
+          subject: data.subject,
+          html: data.html,
+        });
+
+        if (error) {
+          this.logger.error(`Resend rejected email to ${data.to}: ${JSON.stringify(error)}`);
+          return { success: false, error: error.message ?? 'Resend rejected email' };
+        }
+
+        this.logger.log(`✅ Email delivered to ${data.to} — Resend id: ${result?.id}`);
+        return { success: true, id: result?.id };
+      } catch (err: any) {
+        this.logger.error(`Resend email failed for ${data.to}: ${err.message}`);
+        return { success: false, error: err.message };
+      }
     }
-    if (!this.fromEmail) {
+
+    if (!this.brevoApiKey) {
+      this.logger.warn('No email provider configured — missing RESEND_API_KEY and BREVO_API_KEY');
+      return { success: false, error: 'No email provider configured' };
+    }
+    if (!this.brevoFromEmail) {
       this.logger.warn('BREVO_FROM_EMAIL not set — skipping email send');
       return { success: false, error: 'BREVO_FROM_EMAIL not configured' };
     }
+
     try {
-      this.logger.log(`Sending email to ${data.to} | subject: "${data.subject}"`);
+      this.logger.log(`Sending email via Brevo to ${data.to} | subject: "${data.subject}"`);
       const res = await fetch('https://api.brevo.com/v3/smtp/email', {
         method: 'POST',
         headers: {
-          'accept':       'application/json',
-          'api-key':      this.brevoApiKey,
+          accept: 'application/json',
+          'api-key': this.brevoApiKey,
           'content-type': 'application/json',
         },
         body: JSON.stringify({
-          sender:      { name: this.fromName, email: this.fromEmail },
-          to:          [{ email: data.to }],
-          subject:     data.subject,
+          sender: { name: this.fromName, email: this.brevoFromEmail },
+          to: [{ email: data.to }],
+          subject: data.subject,
           htmlContent: data.html,
         }),
       });
