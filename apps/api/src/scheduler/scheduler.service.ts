@@ -1,18 +1,18 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
-import { PrismaService } from '../database/prisma.service';
-import { EmailService } from '../email/email.service';
+import { Injectable, Logger } from "@nestjs/common";
+import { Cron } from "@nestjs/schedule";
+import { PrismaService } from "../database/prisma.service";
+import { EmailService } from "../email/email.service";
 
 // Map of "days until renewal" → reminder label stored in DB.
 // Negative values are catch-up reminders for days the scheduler missed
 // (e.g. Render free-tier dyno was asleep when the cron fired).
 const REMINDER_MILESTONES: Record<number, string> = {
-  7: '7_days',
-  3: '3_days',
-  1: '1_day',
-  0: 'due_today',
-  [-1]: 'overdue_catchup_1d',
-  [-2]: 'overdue_catchup_2d',
+  7: "7_days",
+  3: "3_days",
+  1: "1_day",
+  0: "due_today",
+  [-1]: "overdue_catchup_1d",
+  [-2]: "overdue_catchup_2d",
 };
 
 @Injectable()
@@ -32,21 +32,21 @@ export class SchedulerService {
   // The subscription stays ACTIVE — it is "auto-renewed" until the user
   // explicitly deletes or edits it.
   // ─────────────────────────────────────────────────────────────────────────
-  @Cron('30 */6 * * *', { name: 'auto-renewals' })
+  @Cron("30 */6 * * *", { name: "auto-renewals" })
   async processAutoRenewals() {
     return this.runAutoRenewals();
   }
 
   /** Public so the admin endpoint can trigger it manually. */
   async runAutoRenewals() {
-    this.logger.log('🔄 Running auto-renewal job…');
+    this.logger.log("🔄 Running auto-renewal job…");
 
     const now = new Date();
 
     // Find all ACTIVE subscriptions whose billing date is in the past.
     const overdue = await this.prisma.subscription.findMany({
       where: {
-        status: 'ACTIVE',
+        status: "ACTIVE",
         autoRenew: true,
         nextBillingDate: { lt: now },
       },
@@ -74,7 +74,7 @@ export class SchedulerService {
           where: { id: sub.id },
           data: {
             nextBillingDate: newNextDate,
-            status: 'ACTIVE', // ensure it stays ACTIVE
+            status: "ACTIVE", // ensure it stays ACTIVE
           },
         });
 
@@ -136,14 +136,24 @@ export class SchedulerService {
   // Deduplication is done via the Reminder table — each (subscription, type)
   // pair is only emailed once per billing cycle.
   // ─────────────────────────────────────────────────────────────────────────
-  @Cron('0 */6 * * *', { name: 'renewal-reminders' })
+  @Cron("0 */6 * * *", { name: "renewal-reminders" })
   async sendRenewalReminders() {
     return this.runRenewalReminders();
   }
 
+  /**
+   * Weekly database keepalive job.
+   * This is intentionally tiny so it can wake a sleeping Supabase/Postgres
+   * instance without depending on email providers or business logic.
+   */
+  @Cron("0 8 * * 0", { name: "database-keepalive" })
+  async keepDatabaseAlive() {
+    return this.runDatabaseKeepalive();
+  }
+
   /** Public so the admin endpoint can trigger it manually. */
   async runRenewalReminders() {
-    this.logger.log('⏰ Running renewal reminder job…');
+    this.logger.log("⏰ Running renewal reminder job…");
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -154,7 +164,7 @@ export class SchedulerService {
     // are handled by the auto-renewal job above.
     const upcoming = await this.prisma.subscription.findMany({
       where: {
-        status: 'ACTIVE',
+        status: "ACTIVE",
         nextBillingDate: {
           gte: new Date(today.getTime() - 2 * 86_400_000),
           lte: new Date(today.getTime() + 8 * 86_400_000),
@@ -219,7 +229,7 @@ export class SchedulerService {
         if (!result || result.success !== true) {
           this.logger.error(
             `❌ Reminder NOT sent to ${email} for "${sub.name}" — ${
-              result?.error ?? 'unknown error'
+              result?.error ?? "unknown error"
             }. Will retry on next cron run.`,
           );
           skipped++;
@@ -255,6 +265,29 @@ export class SchedulerService {
     return { sent, skipped };
   }
 
+  async runDatabaseKeepalive() {
+    this.logger.log("🛟 Running weekly database keepalive job…");
+
+    const startedAt = new Date();
+
+    try {
+      await this.prisma.$queryRaw`SELECT 1`;
+      const finishedAt = new Date();
+      const durationMs = finishedAt.getTime() - startedAt.getTime();
+
+      this.logger.log(`✅ Database keepalive succeeded in ${durationMs}ms`);
+      return {
+        success: true,
+        message: "Database keepalive succeeded",
+        checkedAt: startedAt.toISOString(),
+        durationMs,
+      };
+    } catch (err: any) {
+      this.logger.error(`❌ Database keepalive failed: ${err.message}`);
+      throw err;
+    }
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   // HELPERS
   // ─────────────────────────────────────────────────────────────────────────
@@ -267,16 +300,16 @@ export class SchedulerService {
   private advanceBillingDate(from: Date, billingCycle: string): Date {
     const d = new Date(from);
     switch (billingCycle) {
-      case 'WEEKLY':
+      case "WEEKLY":
         d.setDate(d.getDate() + 7);
         break;
-      case 'MONTHLY':
+      case "MONTHLY":
         d.setMonth(d.getMonth() + 1);
         break;
-      case 'QUARTERLY':
+      case "QUARTERLY":
         d.setMonth(d.getMonth() + 3);
         break;
-      case 'YEARLY':
+      case "YEARLY":
         d.setFullYear(d.getFullYear() + 1);
         break;
       default:

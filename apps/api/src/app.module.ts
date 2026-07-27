@@ -1,35 +1,37 @@
-import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
-import { ThrottlerModule } from '@nestjs/throttler';
-import { BullModule } from '@nestjs/bull';
-import { ScheduleModule } from '@nestjs/schedule';
-import { AuthModule } from './auth/auth.module';
-import { UsersModule } from './users/users.module';
-import { SubscriptionsModule } from './subscriptions/subscriptions.module';
-import { AnalyticsModule } from './analytics/analytics.module';
-import { AIModule } from './ai/ai.module';
-import { NotificationsModule } from './notifications/notifications.module';
-import { PaymentsModule } from './payments/payments.module';
-import { EmailModule } from './email/email.module';
-import { DatabaseModule } from './database/database.module';
-import { CacheModule } from './cache/cache.module';
-import { SchedulerModule } from './scheduler/scheduler.module';
-import { GmailModule } from './gmail/gmail.module';
-import { HealthModule } from './health/health.module';
-
+import { Module } from "@nestjs/common";
+import { ConfigModule } from "@nestjs/config";
+import { ThrottlerModule } from "@nestjs/throttler";
+import { BullModule } from "@nestjs/bull";
+import { ScheduleModule } from "@nestjs/schedule";
+import { AuthModule } from "./auth/auth.module";
+import { UsersModule } from "./users/users.module";
+import { SubscriptionsModule } from "./subscriptions/subscriptions.module";
+import { AnalyticsModule } from "./analytics/analytics.module";
+import { AIModule } from "./ai/ai.module";
+import { NotificationsModule } from "./notifications/notifications.module";
+import { PaymentsModule } from "./payments/payments.module";
+import { EmailModule } from "./email/email.module";
+import { DatabaseModule } from "./database/database.module";
+import { CacheModule } from "./cache/cache.module";
+import { SchedulerModule } from "./scheduler/scheduler.module";
+import { GmailModule } from "./gmail/gmail.module";
+import { HealthModule } from "./health/health.module";import { AppController } from './app.controller';
 @Module({
+  controllers: [AppController],
   imports: [
     // Configuration
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '.env',
+      envFilePath: ".env",
     }),
 
     // Rate limiting
-    ThrottlerModule.forRoot([{
-      ttl: 60000, // 1 minute
-      limit: 100,
-    }]),
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000, // 1 minute
+        limit: 100,
+      },
+    ]),
 
     // Bull queue for background jobs
     BullModule.forRootAsync({
@@ -44,14 +46,14 @@ import { HealthModule } from './health/health.module';
               port: Number(parsed.port) || 6379,
               password: parsed.password || undefined,
               username: parsed.username || undefined,
-              tls: parsed.protocol === 'rediss:' ? {} : undefined,
+              tls: parsed.protocol === "rediss:" ? {} : undefined,
             },
           };
         }
         return {
           redis: {
-            host: process.env.REDIS_HOST || 'localhost',
-            port: parseInt(process.env.REDIS_PORT || '6379'),
+            host: process.env.REDIS_HOST || "localhost",
+            port: parseInt(process.env.REDIS_PORT || "6379"),
             password: process.env.REDIS_PASSWORD,
           },
         };

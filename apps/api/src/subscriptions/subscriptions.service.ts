@@ -3,12 +3,16 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
-} from '@nestjs/common';
-import { PrismaService } from '../database/prisma.service';
-import { NotificationsGateway } from '../notifications/notifications.gateway';
-import { AIService } from '../ai/ai.service';
-import { EmailService } from '../email/email.service';
-import { CreateSubscriptionDto, UpdateSubscriptionDto, SubscriptionFiltersDto } from './dto';
+} from "@nestjs/common";
+import { PrismaService } from "../database/prisma.service";
+import { NotificationsGateway } from "../notifications/notifications.gateway";
+import { AIService } from "../ai/ai.service";
+import { EmailService } from "../email/email.service";
+import {
+  CreateSubscriptionDto,
+  UpdateSubscriptionDto,
+  SubscriptionFiltersDto,
+} from "./dto";
 
 @Injectable()
 export class SubscriptionsService {
@@ -24,21 +28,24 @@ export class SubscriptionsService {
     const existing = await this.prisma.subscription.findFirst({
       where: {
         userId,
-        name: { equals: dto.name, mode: 'insensitive' },
-        status: { not: 'CANCELLED' },
+        name: { equals: dto.name, mode: "insensitive" },
+        status: { not: "CANCELLED" },
       },
     });
 
     if (existing) {
       throw new BadRequestException(
-        'You already have an active subscription with this name. Consider updating it instead.',
+        "You already have an active subscription with this name. Consider updating it instead.",
       );
     }
 
     // Use provided nextBillingDate or calculate from startDate + billingCycle
     const nextBillingDate = dto.nextBillingDate
       ? new Date(dto.nextBillingDate)
-      : this.calculateNextBillingDate(new Date(dto.startDate), dto.billingCycle);
+      : this.calculateNextBillingDate(
+          new Date(dto.startDate),
+          dto.billingCycle,
+        );
 
     // Strip nextBillingDate from dto so it doesn't conflict with our computed value
     const { nextBillingDate: _nbd, ...dtoRest } = dto as any;
@@ -65,31 +72,41 @@ export class SubscriptionsService {
     await this.prisma.activityLog.create({
       data: {
         userId,
-        action: 'created_subscription',
-        entity: 'subscription',
+        action: "created_subscription",
+        entity: "subscription",
         entityId: subscription.id,
         metadata: { subscriptionName: dto.name },
       },
     });
 
     // Send real-time WebSocket notification
-    this.notificationsGateway.sendToUser(userId, 'subscription:created', { subscription });
+    this.notificationsGateway.sendToUser(userId, "subscription:created", {
+      subscription,
+    });
 
     // Email: subscription added confirmation + renewal alert if within 7 days
     // Skipped if caller explicitly set emailReminders: false
     const emailReminders = dto.emailReminders !== false;
     if (emailReminders) {
-      const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { email: true, firstName: true } });
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true, firstName: true },
+      });
       if (user?.email) {
-        this.emailService.sendSubscriptionAddedEmail(user.email, subscription).catch(() => {});
+        this.emailService
+          .sendSubscriptionAddedEmail(user.email, subscription)
+          .catch(() => {});
 
         // If renewal falls within 7 days, send immediate reminder
         if (subscription.nextBillingDate) {
           const daysUntilRenewal = Math.ceil(
-            (new Date(subscription.nextBillingDate).getTime() - Date.now()) / 86400000,
+            (new Date(subscription.nextBillingDate).getTime() - Date.now()) /
+              86400000,
           );
           if (daysUntilRenewal >= 0 && daysUntilRenewal <= 7) {
-            this.emailService.sendRenewalReminder(user.email, subscription, daysUntilRenewal).catch(() => {});
+            this.emailService
+              .sendRenewalReminder(user.email, subscription, daysUntilRenewal)
+              .catch(() => {});
           }
         }
       }
@@ -112,7 +129,7 @@ export class SubscriptionsService {
     if (filters?.search) {
       where.name = {
         contains: filters.search,
-        mode: 'insensitive',
+        mode: "insensitive",
       };
     }
 
@@ -123,12 +140,12 @@ export class SubscriptionsService {
           category: true,
           usageLogs: {
             take: 5,
-            orderBy: { date: 'desc' },
+            orderBy: { date: "desc" },
           },
         },
         orderBy: filters?.sortBy
-          ? { [filters.sortBy]: filters.sortOrder || 'desc' }
-          : { createdAt: 'desc' },
+          ? { [filters.sortBy]: filters.sortOrder || "desc" }
+          : { createdAt: "desc" },
         take: filters?.limit || 50,
         skip: filters?.offset || 0,
       }),
@@ -137,8 +154,11 @@ export class SubscriptionsService {
 
     // Calculate total spending
     const monthlyTotal = subscriptions
-      .filter((s) => s.status === 'ACTIVE')
-      .reduce((sum, s) => sum + this.convertToMonthly(s.amount, s.billingCycle), 0);
+      .filter((s) => s.status === "ACTIVE")
+      .reduce(
+        (sum, s) => sum + this.convertToMonthly(s.amount, s.billingCycle),
+        0,
+      );
 
     return {
       subscriptions,
@@ -154,32 +174,36 @@ export class SubscriptionsService {
       include: {
         category: true,
         usageLogs: {
-          orderBy: { date: 'desc' },
+          orderBy: { date: "desc" },
           take: 30,
         },
         payments: {
-          orderBy: { createdAt: 'desc' },
+          orderBy: { createdAt: "desc" },
           take: 12,
         },
         renewalHistory: {
-          orderBy: { renewedAt: 'desc' },
+          orderBy: { renewedAt: "desc" },
           take: 12,
         },
       },
     });
 
     if (!subscription) {
-      throw new NotFoundException('Subscription not found');
+      throw new NotFoundException("Subscription not found");
     }
 
     if (subscription.userId !== userId) {
-      throw new ForbiddenException('Access denied');
+      throw new ForbiddenException("Access denied");
     }
 
     return subscription;
   }
 
-  async update(userId: string, id: string, dto: UpdateSubscriptionDto & { emailReminders?: boolean }) {
+  async update(
+    userId: string,
+    id: string,
+    dto: UpdateSubscriptionDto & { emailReminders?: boolean },
+  ) {
     const subscription = await this.findOne(userId, id);
 
     // Recalculate next billing date if billing cycle changed
@@ -214,15 +238,15 @@ export class SubscriptionsService {
     await this.prisma.activityLog.create({
       data: {
         userId,
-        action: 'updated_subscription',
-        entity: 'subscription',
+        action: "updated_subscription",
+        entity: "subscription",
         entityId: id,
         metadata: { changes: updateData },
       },
     });
 
     // Real-time WebSocket push notification
-    this.notificationsGateway.sendToUser(userId, 'subscription:updated', {
+    this.notificationsGateway.sendToUser(userId, "subscription:updated", {
       subscription: updated,
     });
 
@@ -233,7 +257,9 @@ export class SubscriptionsService {
         select: { email: true, firstName: true },
       });
       if (user?.email) {
-        this.emailService.sendSubscriptionUpdatedEmail(user.email, updated).catch(() => {});
+        this.emailService
+          .sendSubscriptionUpdatedEmail(user.email, updated)
+          .catch(() => {});
       }
     }
 
@@ -251,18 +277,18 @@ export class SubscriptionsService {
     await this.prisma.activityLog.create({
       data: {
         userId,
-        action: 'deleted_subscription',
-        entity: 'subscription',
+        action: "deleted_subscription",
+        entity: "subscription",
         entityId: id,
       },
     });
 
     // Real-time notification
-    this.notificationsGateway.sendToUser(userId, 'subscription:deleted', {
+    this.notificationsGateway.sendToUser(userId, "subscription:deleted", {
       subscriptionId: id,
     });
 
-    return { message: 'Subscription deleted successfully' };
+    return { message: "Subscription deleted successfully" };
   }
 
   async toggleAutoRenew(userId: string, id: string) {
@@ -276,18 +302,22 @@ export class SubscriptionsService {
     });
 
     // Real-time update
-    this.notificationsGateway.sendToUser(userId, 'subscription:updated', {
+    this.notificationsGateway.sendToUser(userId, "subscription:updated", {
       subscription: updated,
     });
 
     return updated;
   }
 
-  async addUsageLog(userId: string, subscriptionId: string, usage: {
-    hoursUsed?: number;
-    sessionsCount?: number;
-    featuresUsed?: string[];
-  }) {
+  async addUsageLog(
+    userId: string,
+    subscriptionId: string,
+    usage: {
+      hoursUsed?: number;
+      sessionsCount?: number;
+      featuresUsed?: string[];
+    },
+  ) {
     await this.findOne(userId, subscriptionId);
 
     const usageLog = await this.prisma.usageLog.create({
@@ -311,7 +341,7 @@ export class SubscriptionsService {
     return this.prisma.subscription.findMany({
       where: {
         userId,
-        status: 'ACTIVE',
+        status: "ACTIVE",
         nextBillingDate: {
           lte: futureDate,
         },
@@ -320,39 +350,44 @@ export class SubscriptionsService {
         category: true,
       },
       orderBy: {
-        nextBillingDate: 'asc',
+        nextBillingDate: "asc",
       },
     });
   }
 
   async getDashboardStats(userId: string) {
-    const [subscriptions, thisMonthPayments, lastMonthPayments] = await Promise.all([
-      this.prisma.subscription.findMany({
-        where: { userId, status: 'ACTIVE' },
-        include: { category: true },
-      }),
-      this.prisma.payment.aggregate({
-        where: {
-          userId,
-          status: 'success',
-          createdAt: {
-            gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+    const [subscriptions, thisMonthPayments, lastMonthPayments] =
+      await Promise.all([
+        this.prisma.subscription.findMany({
+          where: { userId, status: "ACTIVE" },
+          include: { category: true },
+        }),
+        this.prisma.payment.aggregate({
+          where: {
+            userId,
+            status: "success",
+            createdAt: {
+              gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+            },
           },
-        },
-        _sum: { amount: true },
-      }),
-      this.prisma.payment.aggregate({
-        where: {
-          userId,
-          status: 'success',
-          createdAt: {
-            gte: new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1),
-            lt: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+          _sum: { amount: true },
+        }),
+        this.prisma.payment.aggregate({
+          where: {
+            userId,
+            status: "success",
+            createdAt: {
+              gte: new Date(
+                new Date().getFullYear(),
+                new Date().getMonth() - 1,
+                1,
+              ),
+              lt: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+            },
           },
-        },
-        _sum: { amount: true },
-      }),
-    ]);
+          _sum: { amount: true },
+        }),
+      ]);
 
     // Calculate monthly total
     const monthlyTotal = subscriptions.reduce(
@@ -361,12 +396,15 @@ export class SubscriptionsService {
     );
 
     // Category breakdown
-    const categoryBreakdown = subscriptions.reduce((acc, sub) => {
-      const category = sub.category?.name || 'Uncategorized';
-      const monthly = this.convertToMonthly(sub.amount, sub.billingCycle);
-      acc[category] = (acc[category] || 0) + monthly;
-      return acc;
-    }, {} as Record<string, number>);
+    const categoryBreakdown = subscriptions.reduce(
+      (acc, sub) => {
+        const category = sub.category?.name || "Uncategorized";
+        const monthly = this.convertToMonthly(sub.amount, sub.billingCycle);
+        acc[category] = (acc[category] || 0) + monthly;
+        return acc;
+      },
+      {} as Record<string, number>,
+    );
 
     // Most expensive
     const topExpensive = subscriptions
@@ -400,20 +438,23 @@ export class SubscriptionsService {
 
   // Private helper methods
 
-  private calculateNextBillingDate(startDate: Date, billingCycle: string): Date {
+  private calculateNextBillingDate(
+    startDate: Date,
+    billingCycle: string,
+  ): Date {
     const date = new Date(startDate);
 
     switch (billingCycle) {
-      case 'MONTHLY':
+      case "MONTHLY":
         date.setMonth(date.getMonth() + 1);
         break;
-      case 'YEARLY':
+      case "YEARLY":
         date.setFullYear(date.getFullYear() + 1);
         break;
-      case 'QUARTERLY':
+      case "QUARTERLY":
         date.setMonth(date.getMonth() + 3);
         break;
-      case 'WEEKLY':
+      case "WEEKLY":
         date.setDate(date.getDate() + 7);
         break;
       default:
@@ -425,13 +466,13 @@ export class SubscriptionsService {
 
   private convertToMonthly(amount: number, billingCycle: string): number {
     switch (billingCycle) {
-      case 'YEARLY':
+      case "YEARLY":
         return amount / 12;
-      case 'QUARTERLY':
+      case "QUARTERLY":
         return amount / 3;
-      case 'WEEKLY':
+      case "WEEKLY":
         return (amount * 52) / 12;
-      case 'MONTHLY':
+      case "MONTHLY":
       default:
         return amount;
     }
@@ -463,7 +504,7 @@ export class SubscriptionsService {
       include: {
         usageLogs: {
           take: 30,
-          orderBy: { date: 'desc' },
+          orderBy: { date: "desc" },
         },
       },
     });
@@ -471,7 +512,8 @@ export class SubscriptionsService {
     if (!subscription) return;
 
     // Calculate value score using AI
-    const valueScore = await this.aiService.calculateSubscriptionValue(subscription);
+    const valueScore =
+      await this.aiService.calculateSubscriptionValue(subscription);
 
     // Calculate health score
     const healthScore = this.calculateHealthScore(subscription);

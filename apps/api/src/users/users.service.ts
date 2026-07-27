@@ -1,6 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../database/prisma.service';
-import { UpdateProfileDto, UpdatePreferencesDto } from './dto';
+import { Injectable, NotFoundException } from "@nestjs/common";
+import { PrismaService } from "../database/prisma.service";
+import { UpdateProfileDto, UpdatePreferencesDto } from "./dto";
 
 @Injectable()
 export class UsersService {
@@ -28,7 +28,7 @@ export class UsersService {
     });
 
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException("User not found");
     }
 
     return user;
@@ -55,8 +55,8 @@ export class UsersService {
     await this.prisma.activityLog.create({
       data: {
         userId: id,
-        action: 'updated_profile',
-        entity: 'user',
+        action: "updated_profile",
+        entity: "user",
         entityId: id,
       },
     });
@@ -85,7 +85,7 @@ export class UsersService {
 
     await this.prisma.user.delete({ where: { id } });
 
-    return { message: 'Account deleted successfully' };
+    return { message: "Account deleted successfully" };
   }
 
   async getActivityLog(id: string) {
@@ -93,7 +93,7 @@ export class UsersService {
 
     return this.prisma.activityLog.findMany({
       where: { userId: id },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       take: 50,
     });
   }

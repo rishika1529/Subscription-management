@@ -1,17 +1,27 @@
 import {
-  Controller, Get, Post, Delete, Query, Body, Req, Res,
-  UseGuards, UseInterceptors, UploadedFile, BadRequestException,
-} from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
-import { ConfigService } from '@nestjs/config';
-import { Response } from 'express';
-import { GmailService } from './gmail.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CurrentUser } from '../common/decorators/current-user.decorator';
+  Controller,
+  Get,
+  Post,
+  Delete,
+  Query,
+  Body,
+  Req,
+  Res,
+  UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
+} from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
+import { ApiTags, ApiBearerAuth } from "@nestjs/swagger";
+import { ConfigService } from "@nestjs/config";
+import { Response } from "express";
+import { GmailService } from "./gmail.service";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { CurrentUser } from "../common/decorators/current-user.decorator";
 
-@ApiTags('gmail')
-@Controller('gmail')
+@ApiTags("gmail")
+@Controller("gmail")
 export class GmailController {
   constructor(
     private readonly gmail: GmailService,
@@ -19,7 +29,7 @@ export class GmailController {
   ) {}
 
   /** Returns the Google OAuth URL the frontend should redirect the user to. */
-  @Get('auth-url')
+  @Get("auth-url")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   getAuthUrl(@CurrentUser() user: any) {
@@ -28,17 +38,20 @@ export class GmailController {
   }
 
   /** Google redirects here after consent. Stores tokens and redirects to frontend. */
-  @Get('callback')
+  @Get("callback")
   async callback(
-    @Query('code') code: string,
-    @Query('state') userId: string,
-    @Query('error') error: string,
+    @Query("code") code: string,
+    @Query("state") userId: string,
+    @Query("error") error: string,
     @Res() res: Response,
   ) {
-    const frontendUrl = this.config.get('FRONTEND_URL') || 'http://localhost:3000';
+    const frontendUrl =
+      this.config.get("FRONTEND_URL") || "http://localhost:3000";
 
     if (error) {
-      return res.redirect(`${frontendUrl}/dashboard?gmailError=${encodeURIComponent(error)}`);
+      return res.redirect(
+        `${frontendUrl}/dashboard?gmailError=${encodeURIComponent(error)}`,
+      );
     }
     if (!code || !userId) {
       return res.redirect(`${frontendUrl}/dashboard?gmailError=missing_params`);
@@ -48,12 +61,14 @@ export class GmailController {
       await this.gmail.handleCallback(code, userId);
       return res.redirect(`${frontendUrl}/dashboard?gmailConnected=1`);
     } catch (err: any) {
-      return res.redirect(`${frontendUrl}/dashboard?gmailError=${encodeURIComponent(err.message)}`);
+      return res.redirect(
+        `${frontendUrl}/dashboard?gmailError=${encodeURIComponent(err.message)}`,
+      );
     }
   }
 
   /** Check if the current user has Gmail connected. */
-  @Get('status')
+  @Get("status")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   async getStatus(@CurrentUser() user: any) {
@@ -61,7 +76,7 @@ export class GmailController {
   }
 
   /** Scan Gmail for subscriptions and return detected list. */
-  @Post('scan')
+  @Post("scan")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   async scan(@CurrentUser() user: any) {
@@ -70,40 +85,40 @@ export class GmailController {
   }
 
   /** Search Gmail for a specific service name and extract subscription details. */
-  @Post('search')
+  @Post("search")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  async search(@CurrentUser() user: any, @Body('query') query: string) {
-    if (!query?.trim()) throw new BadRequestException('query is required');
+  async search(@CurrentUser() user: any, @Body("query") query: string) {
+    if (!query?.trim()) throw new BadRequestException("query is required");
     const detected = await this.gmail.searchGmail(user.userId, query.trim());
     return { detected, count: detected.length };
   }
 
   /** Upload a CSV or bank statement and extract subscriptions. */
-  @Post('import-csv')
+  @Post("import-csv")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  @UseInterceptors(
+    FileInterceptor("file", { limits: { fileSize: 5 * 1024 * 1024 } }),
+  )
   async importCsv(
     @CurrentUser() user: any,
     @UploadedFile() file: any,
-    @Body('text') text?: string,
+    @Body("text") text?: string,
   ) {
-    const content = file
-      ? file.buffer.toString('utf-8')
-      : text || '';
+    const content = file ? file.buffer.toString("utf-8") : text || "";
 
-    if (!content.trim()) throw new BadRequestException('No content provided.');
+    if (!content.trim()) throw new BadRequestException("No content provided.");
 
     const detected = await this.gmail.parseCSV(user.userId, content);
     return { detected, count: detected.length };
   }
 
   /** Disconnect one Gmail account (by connectionId) or all if no id given. */
-  @Delete('disconnect')
+  @Delete("disconnect")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  async disconnect(@CurrentUser() user: any, @Query('id') id?: string) {
+  async disconnect(@CurrentUser() user: any, @Query("id") id?: string) {
     await this.gmail.disconnect(user.userId, id);
     return { success: true };
   }

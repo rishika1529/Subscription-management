@@ -6,11 +6,11 @@ import {
   OnGatewayDisconnect,
   ConnectedSocket,
   MessageBody,
-} from '@nestjs/websockets';
-import { Server, Socket } from 'socket.io';
-import { Logger, UseGuards } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
+} from "@nestjs/websockets";
+import { Server, Socket } from "socket.io";
+import { Logger, UseGuards } from "@nestjs/common";
+import { JwtService } from "@nestjs/jwt";
+import { ConfigService } from "@nestjs/config";
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -18,12 +18,16 @@ interface AuthenticatedSocket extends Socket {
 
 @WebSocketGateway({
   cors: {
-    origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'],
+    origin: process.env.ALLOWED_ORIGINS?.split(",") || [
+      "http://localhost:3000",
+    ],
     credentials: true,
   },
-  namespace: '/',
+  namespace: "/",
 })
-export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class NotificationsGateway
+  implements OnGatewayConnection, OnGatewayDisconnect
+{
   @WebSocketServer()
   server: Server;
 
@@ -38,18 +42,21 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
   async handleConnection(client: AuthenticatedSocket) {
     try {
       // Extract token from handshake
-      const token = client.handshake.auth?.token || 
-                   client.handshake.headers?.authorization?.replace('Bearer ', '');
+      const token =
+        client.handshake.auth?.token ||
+        client.handshake.headers?.authorization?.replace("Bearer ", "");
 
       if (!token) {
-        this.logger.warn(`Client ${client.id} attempted to connect without token`);
+        this.logger.warn(
+          `Client ${client.id} attempted to connect without token`,
+        );
         client.disconnect();
         return;
       }
 
       // Verify JWT
       const payload = this.jwtService.verify(token, {
-        secret: this.configService.get('JWT_SECRET'),
+        secret: this.configService.get("JWT_SECRET"),
       });
 
       const userId = payload.sub;
@@ -69,8 +76,8 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
       );
 
       // Send connection confirmation
-      client.emit('connected', {
-        message: 'Connected to SubTrack Pro',
+      client.emit("connected", {
+        message: "Connected to SubTrack Pro",
         userId,
         timestamp: new Date(),
       });
@@ -78,8 +85,11 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
       // Send initial presence data
       this.broadcastPresence(userId, true);
     } catch (error) {
-      this.logger.error(`Authentication failed for client ${client.id}:`, error.message);
-      client.emit('error', { message: 'Authentication failed' });
+      this.logger.error(
+        `Authentication failed for client ${client.id}:`,
+        error.message,
+      );
+      client.emit("error", { message: "Authentication failed" });
       client.disconnect();
     }
   }
@@ -104,32 +114,32 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
 
   // Event handlers
 
-  @SubscribeMessage('ping')
+  @SubscribeMessage("ping")
   handlePing(@ConnectedSocket() client: Socket) {
-    return { event: 'pong', data: { timestamp: new Date() } };
+    return { event: "pong", data: { timestamp: new Date() } };
   }
 
-  @SubscribeMessage('join:room')
+  @SubscribeMessage("join:room")
   handleJoinRoom(
     @ConnectedSocket() client: AuthenticatedSocket,
     @MessageBody() data: { room: string },
   ) {
     client.join(data.room);
     this.logger.log(`Client ${client.id} joined room ${data.room}`);
-    return { event: 'room:joined', data: { room: data.room } };
+    return { event: "room:joined", data: { room: data.room } };
   }
 
-  @SubscribeMessage('leave:room')
+  @SubscribeMessage("leave:room")
   handleLeaveRoom(
     @ConnectedSocket() client: AuthenticatedSocket,
     @MessageBody() data: { room: string },
   ) {
     client.leave(data.room);
     this.logger.log(`Client ${client.id} left room ${data.room}`);
-    return { event: 'room:left', data: { room: data.room } };
+    return { event: "room:left", data: { room: data.room } };
   }
 
-  @SubscribeMessage('subscription:update')
+  @SubscribeMessage("subscription:update")
   handleSubscriptionUpdate(
     @ConnectedSocket() client: AuthenticatedSocket,
     @MessageBody() data: any,
@@ -137,7 +147,7 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
     // Client is notifying about a subscription update
     // Broadcast to all client's connections
     if (client.userId) {
-      this.sendToUser(client.userId, 'subscription:updated', data);
+      this.sendToUser(client.userId, "subscription:updated", data);
     }
   }
 
@@ -168,44 +178,47 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
 
   // Specific notification types
 
-  sendNotification(userId: string, notification: {
-    type: string;
-    title: string;
-    message: string;
-    actionUrl?: string;
-  }) {
-    this.sendToUser(userId, 'notification', notification);
+  sendNotification(
+    userId: string,
+    notification: {
+      type: string;
+      title: string;
+      message: string;
+      actionUrl?: string;
+    },
+  ) {
+    this.sendToUser(userId, "notification", notification);
   }
 
   sendRenewalReminder(userId: string, subscription: any) {
-    this.sendToUser(userId, 'renewal:reminder', {
+    this.sendToUser(userId, "renewal:reminder", {
       subscription,
       message: `${subscription.name} renews in ${this.getDaysUntil(subscription.nextBillingDate)} days`,
     });
   }
 
   sendPaymentSuccess(userId: string, payment: any) {
-    this.sendToUser(userId, 'payment:success', {
+    this.sendToUser(userId, "payment:success", {
       payment,
       message: `Payment of $${payment.amount} successful`,
     });
   }
 
   sendPaymentFailed(userId: string, payment: any) {
-    this.sendToUser(userId, 'payment:failed', {
+    this.sendToUser(userId, "payment:failed", {
       payment,
       message: `Payment of $${payment.amount} failed`,
     });
   }
 
   sendAIInsight(userId: string, insight: any) {
-    this.sendToUser(userId, 'ai:insight', insight);
+    this.sendToUser(userId, "ai:insight", insight);
   }
 
   // Helper methods
 
   private broadcastPresence(userId: string, online: boolean) {
-    this.server.emit('user:presence', {
+    this.server.emit("user:presence", {
       userId,
       online,
       timestamp: new Date(),

@@ -8,32 +8,32 @@ import {
   IsOptional,
   IsObject,
   Min,
-} from 'class-validator';
-import { Type } from 'class-transformer';
+} from "class-validator";
+import { Type } from "class-transformer";
 
 enum Currency {
-  USD = 'USD',
-  EUR = 'EUR',
-  GBP = 'GBP',
-  INR = 'INR',
-  CAD = 'CAD',
-  AUD = 'AUD',
+  USD = "USD",
+  EUR = "EUR",
+  GBP = "GBP",
+  INR = "INR",
+  CAD = "CAD",
+  AUD = "AUD",
 }
 
 enum BillingCycle {
-  MONTHLY = 'MONTHLY',
-  YEARLY = 'YEARLY',
-  QUARTERLY = 'QUARTERLY',
-  WEEKLY = 'WEEKLY',
-  ONE_TIME = 'ONE_TIME',
+  MONTHLY = "MONTHLY",
+  YEARLY = "YEARLY",
+  QUARTERLY = "QUARTERLY",
+  WEEKLY = "WEEKLY",
+  ONE_TIME = "ONE_TIME",
 }
 
 enum SubscriptionStatus {
-  ACTIVE = 'ACTIVE',
-  CANCELLED = 'CANCELLED',
-  EXPIRED = 'EXPIRED',
-  TRIAL = 'TRIAL',
-  PAUSED = 'PAUSED',
+  ACTIVE = "ACTIVE",
+  CANCELLED = "CANCELLED",
+  EXPIRED = "EXPIRED",
+  TRIAL = "TRIAL",
+  PAUSED = "PAUSED",
 }
 
 export class CreateSubscriptionDto {
@@ -172,7 +172,7 @@ export class SubscriptionFiltersDto {
 
   @IsString()
   @IsOptional()
-  sortOrder?: 'asc' | 'desc';
+  sortOrder?: "asc" | "desc";
 
   @IsNumber()
   @IsOptional()

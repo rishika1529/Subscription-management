@@ -7,40 +7,37 @@ import {
   Res,
   HttpCode,
   HttpStatus,
-} from '@nestjs/common';
-import { Response } from 'express';
-import { AIService } from './ai.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+} from "@nestjs/common";
+import { Response } from "express";
+import { AIService } from "./ai.service";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { CurrentUser } from "../common/decorators/current-user.decorator";
+import { ApiTags, ApiBearerAuth } from "@nestjs/swagger";
 
-@ApiTags('ai')
+@ApiTags("ai")
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
-@Controller('ai')
+@Controller("ai")
 export class AIController {
   constructor(private readonly aiService: AIService) {}
 
   /** Primary chat endpoint — returns JSON { message } for the dashboard UI. */
-  @Post('chat')
-  async chat(
-    @CurrentUser() user: any,
-    @Body('message') message: string,
-  ) {
+  @Post("chat")
+  async chat(@CurrentUser() user: any, @Body("message") message: string) {
     const reply = await this.aiService.chatSimple(user.userId, message);
     return { message: reply };
   }
 
   /** SSE streaming endpoint for future richer clients. */
-  @Post('chat/stream')
+  @Post("chat/stream")
   async chatStream(
     @CurrentUser() user: any,
-    @Body('message') message: string,
+    @Body("message") message: string,
     @Res() res: Response,
   ) {
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
 
     const stream = await this.aiService.chat(user.userId, message);
 
@@ -48,21 +45,21 @@ export class AIController {
       res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
     }
 
-    res.write('data: [DONE]\n\n');
+    res.write("data: [DONE]\n\n");
     res.end();
   }
 
-  @Get('suggestions')
+  @Get("suggestions")
   async getSuggestions(@CurrentUser() user: any) {
     return this.aiService.getSuggestedPrompts(user.userId);
   }
 
-  @Get('savings')
+  @Get("savings")
   async getSavings(@CurrentUser() user: any) {
     return this.aiService.getSavingsRecommendations(user.userId);
   }
 
-  @Get('report')
+  @Get("report")
   async getReport(@CurrentUser() user: any) {
     const report = await this.aiService.generateMonthlyReport(user.userId);
     return { report };

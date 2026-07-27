@@ -1,6 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { Resend } from 'resend';
+import { Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { Resend } from "resend";
 
 @Injectable()
 export class EmailService {
@@ -9,16 +9,17 @@ export class EmailService {
   private brevoFromEmail: string;
   private resend: Resend | null = null;
   private resendFromEmail: string;
-  private fromName = 'SubTrack Pro';
+  private fromName = "SubTrack Pro";
 
   constructor(private configService: ConfigService) {
-    this.brevoApiKey = this.configService.get('BREVO_API_KEY') || '';
-    this.brevoFromEmail = this.configService.get('BREVO_FROM_EMAIL') || '';
-    const resendKey = this.configService.get('RESEND_API_KEY');
+    this.brevoApiKey = this.configService.get("BREVO_API_KEY") || "";
+    this.brevoFromEmail = this.configService.get("BREVO_FROM_EMAIL") || "";
+    const resendKey = this.configService.get("RESEND_API_KEY");
     if (resendKey) {
       this.resend = new Resend(resendKey);
     }
-    this.resendFromEmail = this.configService.get('EMAIL_FROM') || 'onboarding@resend.dev';
+    this.resendFromEmail =
+      this.configService.get("EMAIL_FROM") || "onboarding@resend.dev";
   }
 
   // ── Public send methods ────────────────────────────────────────────────────
@@ -26,7 +27,7 @@ export class EmailService {
   async sendWelcomeEmail(email: string, firstName: string) {
     return this.send({
       to: email,
-      subject: '🎉 Welcome to Subscription Manager!',
+      subject: "🎉 Welcome to Subscription Manager!",
       html: this.getWelcomeTemplate(firstName),
     });
   }
@@ -40,27 +41,31 @@ export class EmailService {
   }
 
   async sendVerificationEmail(email: string, token: string) {
-    const verifyUrl = `${this.configService.get('FRONTEND_URL')}/auth/verify-email?token=${token}`;
+    const verifyUrl = `${this.configService.get("FRONTEND_URL")}/auth/verify-email?token=${token}`;
     return this.send({
       to: email,
-      subject: 'Verify your Subscription Manager account',
+      subject: "Verify your Subscription Manager account",
       html: this.getVerificationTemplate(verifyUrl),
     });
   }
 
   async sendPasswordResetEmail(email: string, token: string) {
-    const resetUrl = `${this.configService.get('FRONTEND_URL')}/auth/reset-password?token=${token}`;
+    const resetUrl = `${this.configService.get("FRONTEND_URL")}/auth/reset-password?token=${token}`;
     return this.send({
       to: email,
-      subject: 'Reset your Subscription Manager password',
+      subject: "Reset your Subscription Manager password",
       html: this.getPasswordResetTemplate(resetUrl),
     });
   }
 
-  async sendRenewalReminder(email: string, subscription: any, daysUntil: number) {
+  async sendRenewalReminder(
+    email: string,
+    subscription: any,
+    daysUntil: number,
+  ) {
     return this.send({
       to: email,
-      subject: `⏰ ${subscription.name} renews in ${daysUntil} day${daysUntil !== 1 ? 's' : ''}`,
+      subject: `⏰ ${subscription.name} renews in ${daysUntil} day${daysUntil !== 1 ? "s" : ""}`,
       html: this.getRenewalReminderTemplate(subscription, daysUntil),
     });
   }
@@ -68,7 +73,7 @@ export class EmailService {
   async sendPaymentSuccessEmail(email: string, payment: any) {
     return this.send({
       to: email,
-      subject: '✅ Payment successful',
+      subject: "✅ Payment successful",
       html: this.getPaymentSuccessTemplate(payment),
     });
   }
@@ -76,7 +81,7 @@ export class EmailService {
   async sendPaymentFailedEmail(email: string, payment: any) {
     return this.send({
       to: email,
-      subject: '❌ Payment failed — action required',
+      subject: "❌ Payment failed — action required",
       html: this.getPaymentFailedTemplate(payment),
     });
   }
@@ -89,9 +94,15 @@ export class EmailService {
     });
   }
 
-  async sendSubscriptionRenewedEmail(email: string, subscription: any, newNextDate: Date) {
-    const nextDateStr = newNextDate.toLocaleDateString('en-US', {
-      month: 'long', day: 'numeric', year: 'numeric',
+  async sendSubscriptionRenewedEmail(
+    email: string,
+    subscription: any,
+    newNextDate: Date,
+  ) {
+    const nextDateStr = newNextDate.toLocaleDateString("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
     });
     return this.send({
       to: email,
@@ -103,7 +114,7 @@ export class EmailService {
   async sendMonthlyReport(email: string, report: string) {
     return this.send({
       to: email,
-      subject: '📊 Your monthly subscription report',
+      subject: "📊 Your monthly subscription report",
       html: this.getMonthlyReportTemplate(report),
     });
   }
@@ -115,7 +126,9 @@ export class EmailService {
 
     if (useResend) {
       try {
-        this.logger.log(`Sending email via Resend to ${data.to} | subject: "${data.subject}"`);
+        this.logger.log(
+          `Sending email via Resend to ${data.to} | subject: "${data.subject}"`,
+        );
         const { data: result, error } = await this.resend!.emails.send({
           from: this.resendFromEmail,
           to: data.to,
@@ -124,11 +137,18 @@ export class EmailService {
         });
 
         if (error) {
-          this.logger.error(`Resend rejected email to ${data.to}: ${JSON.stringify(error)}`);
-          return { success: false, error: error.message ?? 'Resend rejected email' };
+          this.logger.error(
+            `Resend rejected email to ${data.to}: ${JSON.stringify(error)}`,
+          );
+          return {
+            success: false,
+            error: error.message ?? "Resend rejected email",
+          };
         }
 
-        this.logger.log(`✅ Email delivered to ${data.to} — Resend id: ${result?.id}`);
+        this.logger.log(
+          `✅ Email delivered to ${data.to} — Resend id: ${result?.id}`,
+        );
         return { success: true, id: result?.id };
       } catch (err: any) {
         this.logger.error(`Resend email failed for ${data.to}: ${err.message}`);
@@ -137,22 +157,26 @@ export class EmailService {
     }
 
     if (!this.brevoApiKey) {
-      this.logger.warn('No email provider configured — missing RESEND_API_KEY and BREVO_API_KEY');
-      return { success: false, error: 'No email provider configured' };
+      this.logger.warn(
+        "No email provider configured — missing RESEND_API_KEY and BREVO_API_KEY",
+      );
+      return { success: false, error: "No email provider configured" };
     }
     if (!this.brevoFromEmail) {
-      this.logger.warn('BREVO_FROM_EMAIL not set — skipping email send');
-      return { success: false, error: 'BREVO_FROM_EMAIL not configured' };
+      this.logger.warn("BREVO_FROM_EMAIL not set — skipping email send");
+      return { success: false, error: "BREVO_FROM_EMAIL not configured" };
     }
 
     try {
-      this.logger.log(`Sending email via Brevo to ${data.to} | subject: "${data.subject}"`);
-      const res = await fetch('https://api.brevo.com/v3/smtp/email', {
-        method: 'POST',
+      this.logger.log(
+        `Sending email via Brevo to ${data.to} | subject: "${data.subject}"`,
+      );
+      const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
         headers: {
-          accept: 'application/json',
-          'api-key': this.brevoApiKey,
-          'content-type': 'application/json',
+          accept: "application/json",
+          "api-key": this.brevoApiKey,
+          "content-type": "application/json",
         },
         body: JSON.stringify({
           sender: { name: this.fromName, email: this.brevoFromEmail },
@@ -164,12 +188,19 @@ export class EmailService {
 
       if (!res.ok) {
         const body = await res.text();
-        this.logger.error(`Brevo rejected email to ${data.to}: ${res.status} ${body}`);
-        return { success: false, error: `Brevo ${res.status}: ${body.slice(0, 300)}` };
+        this.logger.error(
+          `Brevo rejected email to ${data.to}: ${res.status} ${body}`,
+        );
+        return {
+          success: false,
+          error: `Brevo ${res.status}: ${body.slice(0, 300)}`,
+        };
       }
 
       const result: any = await res.json();
-      this.logger.log(`✅ Email delivered to ${data.to} — Brevo messageId: ${result?.messageId}`);
+      this.logger.log(
+        `✅ Email delivered to ${data.to} — Brevo messageId: ${result?.messageId}`,
+      );
       return { success: true, id: result?.messageId };
     } catch (err: any) {
       this.logger.error(`Email send failed for ${data.to}: ${err.message}`);
@@ -180,7 +211,8 @@ export class EmailService {
   // ── Email templates ────────────────────────────────────────────────────────
 
   private getVerificationTemplate(verifyUrl: string): string {
-    const dashUrl = this.configService.get('FRONTEND_URL') || 'http://localhost:3000';
+    const dashUrl =
+      this.configService.get("FRONTEND_URL") || "http://localhost:3000";
     return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
       body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#000;color:#fff;margin:0;padding:0}
       .wrap{max-width:600px;margin:40px auto;background:linear-gradient(135deg,#1a1a1a,#0f0f0f);border:1px solid #222;border-radius:16px;overflow:hidden}
@@ -227,11 +259,19 @@ export class EmailService {
     </div></body></html>`.trim();
   }
 
-  private getRenewalReminderTemplate(subscription: any, daysUntil: number): string {
-    const dashUrl = this.configService.get('FRONTEND_URL') || 'http://localhost:3000';
+  private getRenewalReminderTemplate(
+    subscription: any,
+    daysUntil: number,
+  ): string {
+    const dashUrl =
+      this.configService.get("FRONTEND_URL") || "http://localhost:3000";
     const nextDate = subscription.nextBillingDate
-      ? new Date(subscription.nextBillingDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-      : 'N/A';
+      ? new Date(subscription.nextBillingDate).toLocaleDateString("en-US", {
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+        })
+      : "N/A";
     return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
       body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#000;color:#fff;margin:0;padding:0}
       .wrap{max-width:600px;margin:40px auto;background:linear-gradient(135deg,#1a1a1a,#0f0f0f);border:1px solid #222;border-radius:16px;overflow:hidden}
@@ -248,10 +288,10 @@ export class EmailService {
     </style></head><body><div class="wrap">
       <div class="hdr"><h1>⏰ Renewal Reminder</h1></div>
       <div class="body">
-        <p>Your subscription is renewing <strong style="color:#fff">${daysUntil === 0 ? 'today' : `in ${daysUntil} day${daysUntil !== 1 ? 's' : ''}`}</strong>.</p>
+        <p>Your subscription is renewing <strong style="color:#fff">${daysUntil === 0 ? "today" : `in ${daysUntil} day${daysUntil !== 1 ? "s" : ""}`}</strong>.</p>
         <div class="card">
           <div class="row"><span>Service</span><strong>${subscription.name}</strong></div>
-          <div class="row"><span>Amount</span><strong>$${Number(subscription.amount).toFixed(2)} ${subscription.currency || 'USD'}</strong></div>
+          <div class="row"><span>Amount</span><strong>$${Number(subscription.amount).toFixed(2)} ${subscription.currency || "USD"}</strong></div>
           <div class="row"><span>Billing</span><strong>${subscription.billingCycle}</strong></div>
           <div class="row"><span>Next Renewal</span><strong>${nextDate}</strong></div>
         </div>
@@ -279,7 +319,7 @@ export class EmailService {
         <div class="amount">$${payment.amount}</div>
         <div class="card">
           <div class="row"><span>Date</span><strong>${new Date(payment.paidAt || Date.now()).toLocaleString()}</strong></div>
-          <div class="row"><span>Method</span><strong>${payment.paymentMethod || 'Card'}</strong></div>
+          <div class="row"><span>Method</span><strong>${payment.paymentMethod || "Card"}</strong></div>
           <div class="row"><span>Status</span><strong style="color:#10b981">Completed</strong></div>
         </div>
         <p style="color:#aaa;font-size:14px;text-align:center">Thank you for using Subscription Manager!</p>
@@ -302,7 +342,7 @@ export class EmailService {
       <div class="hdr"><h1>❌ Payment Failed</h1></div>
       <div class="body">
         <p>Your payment of <strong style="color:#fff">$${payment.amount}</strong> could not be processed.</p>
-        ${payment.failureReason ? `<p>Reason: ${payment.failureReason}</p>` : ''}
+        ${payment.failureReason ? `<p>Reason: ${payment.failureReason}</p>` : ""}
         <p>Please update your payment method and try again.</p>
         <center style="margin:24px 0"><a href="#" class="btn">Update Payment Method</a></center>
       </div>
@@ -311,7 +351,8 @@ export class EmailService {
   }
 
   private getWelcomeTemplate(firstName: string): string {
-    const dashboardUrl = this.configService.get('FRONTEND_URL') || 'http://localhost:3000';
+    const dashboardUrl =
+      this.configService.get("FRONTEND_URL") || "http://localhost:3000";
     return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
       body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#000;color:#fff;margin:0;padding:0}
       .wrap{max-width:600px;margin:40px auto;background:linear-gradient(135deg,#1a1a1a,#0f0f0f);border:1px solid #222;border-radius:16px;overflow:hidden}
@@ -325,7 +366,7 @@ export class EmailService {
     </style></head><body><div class="wrap">
       <div class="hdr"><h1>Subscription Manager</h1><p>Track. Save. Control.</p></div>
       <div class="body">
-        <p>Hey ${firstName || 'there'} 👋</p>
+        <p>Hey ${firstName || "there"} 👋</p>
         <p>Welcome to <strong style="color:#fff">Subscription Manager</strong> — your all-in-one dashboard for tracking every subscription, spotting wasteful spending, and getting renewal alerts before they hit your card.</p>
         <p>Here's what you can do right now:</p>
         <ul style="color:#aaa;line-height:2;padding-left:20px">
@@ -341,15 +382,23 @@ export class EmailService {
   }
 
   private getSubscriptionAddedTemplate(subscription: any): string {
-    const dashboardUrl = this.configService.get('FRONTEND_URL') || 'http://localhost:3000';
+    const dashboardUrl =
+      this.configService.get("FRONTEND_URL") || "http://localhost:3000";
     const monthly =
-      subscription.billingCycle === 'YEARLY'    ? subscription.amount / 12
-      : subscription.billingCycle === 'QUARTERLY' ? subscription.amount / 3
-      : subscription.billingCycle === 'WEEKLY'    ? (subscription.amount * 52) / 12
-      : subscription.amount;
+      subscription.billingCycle === "YEARLY"
+        ? subscription.amount / 12
+        : subscription.billingCycle === "QUARTERLY"
+          ? subscription.amount / 3
+          : subscription.billingCycle === "WEEKLY"
+            ? (subscription.amount * 52) / 12
+            : subscription.amount;
     const nextDate = subscription.nextBillingDate
-      ? new Date(subscription.nextBillingDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-      : 'N/A';
+      ? new Date(subscription.nextBillingDate).toLocaleDateString("en-US", {
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+        })
+      : "N/A";
     return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
       body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#000;color:#fff;margin:0;padding:0}
       .wrap{max-width:600px;margin:40px auto;background:linear-gradient(135deg,#1a1a1a,#0f0f0f);border:1px solid #222;border-radius:16px;overflow:hidden}
@@ -368,8 +417,8 @@ export class EmailService {
         <p style="color:#aaa;font-size:15px"><strong style="color:#fff">${subscription.name}</strong> has been added to your Subscription Manager.</p>
         <div class="card">
           <div class="row"><span>Service</span><strong>${subscription.name}</strong></div>
-          <div class="row"><span>Amount</span><strong>$${Number(subscription.amount).toFixed(2)} ${subscription.currency || 'USD'}</strong></div>
-          <div class="row"><span>Billing</span><strong>${subscription.billingCycle || 'Monthly'}</strong></div>
+          <div class="row"><span>Amount</span><strong>$${Number(subscription.amount).toFixed(2)} ${subscription.currency || "USD"}</strong></div>
+          <div class="row"><span>Billing</span><strong>${subscription.billingCycle || "Monthly"}</strong></div>
           <div class="row"><span>Next Renewal</span><strong>${nextDate}</strong></div>
           <div class="price">$${monthly.toFixed(2)}<span style="font-size:14px;color:#888">/mo</span></div>
         </div>
@@ -381,15 +430,23 @@ export class EmailService {
   }
 
   private getSubscriptionUpdatedTemplate(subscription: any): string {
-    const dashboardUrl = this.configService.get('FRONTEND_URL') || 'http://localhost:3000';
+    const dashboardUrl =
+      this.configService.get("FRONTEND_URL") || "http://localhost:3000";
     const monthly =
-      subscription.billingCycle === 'YEARLY'    ? subscription.amount / 12
-      : subscription.billingCycle === 'QUARTERLY' ? subscription.amount / 3
-      : subscription.billingCycle === 'WEEKLY'    ? (subscription.amount * 52) / 12
-      : subscription.amount;
+      subscription.billingCycle === "YEARLY"
+        ? subscription.amount / 12
+        : subscription.billingCycle === "QUARTERLY"
+          ? subscription.amount / 3
+          : subscription.billingCycle === "WEEKLY"
+            ? (subscription.amount * 52) / 12
+            : subscription.amount;
     const nextDate = subscription.nextBillingDate
-      ? new Date(subscription.nextBillingDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-      : 'N/A';
+      ? new Date(subscription.nextBillingDate).toLocaleDateString("en-US", {
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+        })
+      : "N/A";
     return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
       body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#000;color:#fff;margin:0;padding:0}
       .wrap{max-width:600px;margin:40px auto;background:linear-gradient(135deg,#1a1a1a,#0f0f0f);border:1px solid #222;border-radius:16px;overflow:hidden}
@@ -409,8 +466,8 @@ export class EmailService {
         <p><strong style="color:#fff">${subscription.name}</strong> has been updated in your Subscription Manager.</p>
         <div class="card">
           <div class="row"><span>Service</span><strong>${subscription.name}</strong></div>
-          <div class="row"><span>Amount</span><strong>$${Number(subscription.amount).toFixed(2)} ${subscription.currency || 'USD'}</strong></div>
-          <div class="row"><span>Billing</span><strong>${subscription.billingCycle || 'Monthly'}</strong></div>
+          <div class="row"><span>Amount</span><strong>$${Number(subscription.amount).toFixed(2)} ${subscription.currency || "USD"}</strong></div>
+          <div class="row"><span>Billing</span><strong>${subscription.billingCycle || "Monthly"}</strong></div>
           <div class="row"><span>Next Renewal</span><strong>${nextDate}</strong></div>
           <div class="price">$${monthly.toFixed(2)}<span style="font-size:14px;color:#888">/mo</span></div>
         </div>
@@ -422,10 +479,11 @@ export class EmailService {
   }
 
   private getMonthlyReportTemplate(report: string): string {
-    const dashUrl = this.configService.get('FRONTEND_URL') || 'http://localhost:3000';
+    const dashUrl =
+      this.configService.get("FRONTEND_URL") || "http://localhost:3000";
     const htmlReport = report
-      .replace(/\n\n/g, '</p><p>')
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      .replace(/\n\n/g, "</p><p>")
+      .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
     return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
       body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#000;color:#fff;margin:0;padding:0}
       .wrap{max-width:600px;margin:40px auto;background:linear-gradient(135deg,#1a1a1a,#0f0f0f);border:1px solid #222;border-radius:16px;overflow:hidden}
@@ -444,13 +502,20 @@ export class EmailService {
     </div></body></html>`.trim();
   }
 
-  private getSubscriptionRenewedTemplate(subscription: any, nextDateStr: string): string {
-    const dashboardUrl = this.configService.get('FRONTEND_URL') || 'http://localhost:3000';
+  private getSubscriptionRenewedTemplate(
+    subscription: any,
+    nextDateStr: string,
+  ): string {
+    const dashboardUrl =
+      this.configService.get("FRONTEND_URL") || "http://localhost:3000";
     const monthly =
-      subscription.billingCycle === 'YEARLY'    ? subscription.amount / 12
-      : subscription.billingCycle === 'QUARTERLY' ? subscription.amount / 3
-      : subscription.billingCycle === 'WEEKLY'    ? (subscription.amount * 52) / 12
-      : subscription.amount;
+      subscription.billingCycle === "YEARLY"
+        ? subscription.amount / 12
+        : subscription.billingCycle === "QUARTERLY"
+          ? subscription.amount / 3
+          : subscription.billingCycle === "WEEKLY"
+            ? (subscription.amount * 52) / 12
+            : subscription.amount;
     return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
       body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#000;color:#fff;margin:0;padding:0}
       .wrap{max-width:600px;margin:40px auto;background:linear-gradient(135deg,#1a1a1a,#0f0f0f);border:1px solid #222;border-radius:16px;overflow:hidden}
@@ -473,8 +538,8 @@ export class EmailService {
         <p>Your <strong style="color:#fff">${subscription.name}</strong> subscription has been automatically renewed. No action needed on your end!</p>
         <div class="card">
           <div class="row"><span>Service</span><strong>${subscription.name}</strong></div>
-          <div class="row"><span>Amount</span><strong>$${Number(subscription.amount).toFixed(2)} ${subscription.currency || 'USD'}</strong></div>
-          <div class="row"><span>Billing</span><strong>${subscription.billingCycle || 'Monthly'}</strong></div>
+          <div class="row"><span>Amount</span><strong>$${Number(subscription.amount).toFixed(2)} ${subscription.currency || "USD"}</strong></div>
+          <div class="row"><span>Billing</span><strong>${subscription.billingCycle || "Monthly"}</strong></div>
           <div class="row"><span>Next Renewal</span><strong>${nextDateStr}</strong></div>
           <div class="price">$${monthly.toFixed(2)}<span style="font-size:14px;color:#888">/mo</span></div>
         </div>

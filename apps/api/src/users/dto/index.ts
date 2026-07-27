@@ -1,5 +1,5 @@
-import { IsString, IsOptional, IsEnum } from 'class-validator';
-import { Currency } from '@prisma/client';
+import { IsString, IsOptional, IsEnum } from "class-validator";
+import { Currency } from "@prisma/client";
 
 export class UpdateProfileDto {
   @IsString()

@@ -1,5 +1,5 @@
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../database/prisma.service';
+import { Injectable } from "@nestjs/common";
+import { PrismaService } from "../database/prisma.service";
 
 @Injectable()
 export class AnalyticsService {
@@ -9,18 +9,18 @@ export class AnalyticsService {
     const [activeSubscriptions, totalPayments, upcomingRenewals] =
       await Promise.all([
         this.prisma.subscription.findMany({
-          where: { userId, status: 'ACTIVE' },
+          where: { userId, status: "ACTIVE" },
           include: { category: true },
         }),
         this.prisma.payment.aggregate({
-          where: { userId, status: 'success' },
+          where: { userId, status: "success" },
           _sum: { amount: true },
           _count: true,
         }),
         this.prisma.subscription.count({
           where: {
             userId,
-            status: 'ACTIVE',
+            status: "ACTIVE",
             nextBillingDate: {
               lte: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
             },
@@ -44,14 +44,17 @@ export class AnalyticsService {
 
   async getCategoryBreakdown(userId: string) {
     const subscriptions = await this.prisma.subscription.findMany({
-      where: { userId, status: 'ACTIVE' },
+      where: { userId, status: "ACTIVE" },
       include: { category: true },
     });
 
-    const breakdown: Record<string, { total: number; count: number; subscriptions: any[] }> = {};
+    const breakdown: Record<
+      string,
+      { total: number; count: number; subscriptions: any[] }
+    > = {};
 
     for (const sub of subscriptions) {
-      const categoryName = sub.category?.name || 'Uncategorized';
+      const categoryName = sub.category?.name || "Uncategorized";
       const monthly = this.convertToMonthly(sub.amount, sub.billingCycle);
 
       if (!breakdown[categoryName]) {
@@ -89,7 +92,7 @@ export class AnalyticsService {
       const payments = await this.prisma.payment.aggregate({
         where: {
           userId,
-          status: 'success',
+          status: "success",
           createdAt: { gte: start, lte: end },
         },
         _sum: { amount: true },
@@ -99,7 +102,10 @@ export class AnalyticsService {
       results.push({
         year,
         month: month + 1,
-        label: date.toLocaleString('default', { month: 'short', year: 'numeric' }),
+        label: date.toLocaleString("default", {
+          month: "short",
+          year: "numeric",
+        }),
         total: payments._sum.amount || 0,
         transactionCount: payments._count,
       });
@@ -110,13 +116,13 @@ export class AnalyticsService {
 
   private convertToMonthly(amount: number, billingCycle: string): number {
     switch (billingCycle) {
-      case 'YEARLY':
+      case "YEARLY":
         return amount / 12;
-      case 'QUARTERLY':
+      case "QUARTERLY":
         return amount / 3;
-      case 'WEEKLY':
+      case "WEEKLY":
         return (amount * 52) / 12;
-      case 'MONTHLY':
+      case "MONTHLY":
       default:
         return amount;
     }

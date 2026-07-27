@@ -4,7 +4,7 @@ import {
   MinLength,
   IsOptional,
   IsObject,
-} from 'class-validator';
+} from "class-validator";
 
 export class RegisterDto {
   @IsEmail()

@@ -1,5 +1,9 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
-import { PrismaService } from '../database/prisma.service';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+} from "@nestjs/common";
+import { PrismaService } from "../database/prisma.service";
 
 @Injectable()
 export class PaymentsService {
@@ -13,7 +17,7 @@ export class PaymentsService {
           select: { id: true, name: true, logo: true },
         },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       take: limit,
     });
   }
@@ -29,11 +33,11 @@ export class PaymentsService {
     });
 
     if (!payment) {
-      throw new NotFoundException('Payment not found');
+      throw new NotFoundException("Payment not found");
     }
 
     if (payment.userId !== userId) {
-      throw new ForbiddenException('Access denied');
+      throw new ForbiddenException("Access denied");
     }
 
     return payment;

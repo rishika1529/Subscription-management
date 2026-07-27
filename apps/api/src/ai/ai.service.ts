@@ -1,7 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import OpenAI from 'openai';
-import { PrismaService } from '../database/prisma.service';
+import { Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import OpenAI from "openai";
+import { PrismaService } from "../database/prisma.service";
 
 @Injectable()
 export class AIService {
@@ -13,24 +13,24 @@ export class AIService {
     private prisma: PrismaService,
   ) {
     this.openai = new OpenAI({
-      apiKey: this.configService.get('OPENAI_API_KEY'),
+      apiKey: this.configService.get("OPENAI_API_KEY"),
       baseURL:
-        this.configService.get('OPENAI_BASE_URL') ||
-        'https://generativelanguage.googleapis.com/v1beta/openai/',
+        this.configService.get("OPENAI_BASE_URL") ||
+        "https://generativelanguage.googleapis.com/v1beta/openai/",
     });
   }
 
   private get model(): string {
-    return this.configService.get('OPENAI_MODEL') || 'gemini-2.0-flash';
+    return this.configService.get("OPENAI_MODEL") || "gemini-2.0-flash";
   }
 
   /** Non-streaming chat — used by the dashboard AI chat panel. */
   async chatSimple(userId: string, message: string): Promise<string> {
-    const apiKey = this.configService.get('OPENAI_API_KEY');
+    const apiKey = this.configService.get("OPENAI_API_KEY");
     if (!apiKey) {
       return (
         "⚠️ The AI assistant isn't configured yet. " +
-        'Add your **OPENAI_API_KEY** to the backend environment variables on Render, then redeploy.'
+        "Add your **OPENAI_API_KEY** to the backend environment variables on Render, then redeploy."
       );
     }
 
@@ -39,7 +39,7 @@ export class AIService {
         where: { id: userId },
         include: {
           subscriptions: {
-            where: { status: 'ACTIVE' },
+            where: { status: "ACTIVE" },
             include: { category: true, usageLogs: { take: 5 } },
           },
         },
@@ -49,13 +49,13 @@ export class AIService {
 
       const chatHistory = await this.prisma.aIChat.findFirst({
         where: { userId },
-        orderBy: { updatedAt: 'desc' },
+        orderBy: { updatedAt: "desc" },
       });
 
       const messages: any[] = [
-        { role: 'system', content: this.getSystemPrompt(context) },
+        { role: "system", content: this.getSystemPrompt(context) },
         ...((chatHistory?.messages as any[]) || []).slice(-10),
-        { role: 'user', content: message },
+        { role: "user", content: message },
       ];
 
       const response = await this.openai.chat.completions.create({
@@ -65,23 +65,25 @@ export class AIService {
         max_tokens: 1000,
       });
 
-      const reply = response.choices[0]?.message?.content || 'Sorry, I could not generate a response.';
+      const reply =
+        response.choices[0]?.message?.content ||
+        "Sorry, I could not generate a response.";
 
       // Persist chat history
       const newMessages = [
         ...((chatHistory?.messages as any[]) || []),
-        { role: 'user',      content: message, timestamp: new Date() },
-        { role: 'assistant', content: reply,   timestamp: new Date() },
+        { role: "user", content: message, timestamp: new Date() },
+        { role: "assistant", content: reply, timestamp: new Date() },
       ];
       await this.prisma.aIChat.upsert({
-        where:  { userId },
+        where: { userId },
         create: { userId, messages: newMessages },
         update: { messages: newMessages, updatedAt: new Date() },
       });
 
       return reply;
     } catch (error: any) {
-      this.logger.error('AI chat error:', error.message);
+      this.logger.error("AI chat error:", error.message);
       return `❌ AI error: ${error.message}. Make sure your OPENAI_API_KEY is valid and has credits.`;
     }
   }
@@ -92,7 +94,7 @@ export class AIService {
       where: { id: userId },
       include: {
         subscriptions: {
-          where: { status: 'ACTIVE' },
+          where: { status: "ACTIVE" },
           include: { category: true, usageLogs: { take: 5 } },
         },
       },
@@ -102,13 +104,13 @@ export class AIService {
 
     const chatHistory = await this.prisma.aIChat.findFirst({
       where: { userId },
-      orderBy: { updatedAt: 'desc' },
+      orderBy: { updatedAt: "desc" },
     });
 
     const messages: any[] = [
-      { role: 'system', content: this.getSystemPrompt(context) },
+      { role: "system", content: this.getSystemPrompt(context) },
       ...((chatHistory?.messages as any[]) || []).slice(-10),
-      { role: 'user', content: message },
+      { role: "user", content: message },
     ];
 
     const stream = await this.openai.chat.completions.create({
@@ -121,7 +123,7 @@ export class AIService {
 
     const newMessages = [
       ...((chatHistory?.messages as any[]) || []),
-      { role: 'user', content: message, timestamp: new Date() },
+      { role: "user", content: message, timestamp: new Date() },
     ];
 
     return this.streamResponse(stream, userId, newMessages);
@@ -132,20 +134,24 @@ export class AIService {
     userId: string,
     messages: any[],
   ): AsyncIterable<string> {
-    let fullResponse = '';
+    let fullResponse = "";
 
     for await (const chunk of stream) {
-      const content = chunk.choices[0]?.delta?.content || '';
+      const content = chunk.choices[0]?.delta?.content || "";
       if (content) {
         fullResponse += content;
         yield content;
       }
     }
 
-    messages.push({ role: 'assistant', content: fullResponse, timestamp: new Date() });
+    messages.push({
+      role: "assistant",
+      content: fullResponse,
+      timestamp: new Date(),
+    });
 
     await this.prisma.aIChat.upsert({
-      where:  { userId },
+      where: { userId },
       create: { userId, messages },
       update: { messages, updatedAt: new Date() },
     });
@@ -173,15 +179,17 @@ Respond with ONLY a number between 0-100.
     try {
       const response = await this.openai.chat.completions.create({
         model: this.model,
-        messages: [{ role: 'user', content: prompt }],
+        messages: [{ role: "user", content: prompt }],
         temperature: 0.3,
         max_tokens: 10,
       });
 
-      const score = parseInt(response.choices[0].message.content?.trim() || '50');
+      const score = parseInt(
+        response.choices[0].message.content?.trim() || "50",
+      );
       return Math.max(0, Math.min(100, score));
     } catch (error) {
-      this.logger.error('Failed to calculate value score:', error);
+      this.logger.error("Failed to calculate value score:", error);
       return 50; // Default
     }
   }
@@ -191,7 +199,7 @@ Respond with ONLY a number between 0-100.
       where: { id: userId },
       include: {
         subscriptions: {
-          where: { status: 'ACTIVE' },
+          where: { status: "ACTIVE" },
           include: {
             category: true,
             usageLogs: {
@@ -213,10 +221,8 @@ Respond with ONLY a number between 0-100.
       },
     });
 
-    const totalMonthly = user?.subscriptions.reduce(
-      (sum, s) => sum + s.amount,
-      0,
-    ) || 0;
+    const totalMonthly =
+      user?.subscriptions.reduce((sum, s) => sum + s.amount, 0) || 0;
 
     const prompt = `
 Generate a comprehensive monthly subscription report for a user.
@@ -250,14 +256,14 @@ Make it conversational, insightful, and actionable. Use emojis sparingly for vis
     try {
       const response = await this.openai.chat.completions.create({
         model: this.model,
-        messages: [{ role: 'user', content: prompt }],
+        messages: [{ role: "user", content: prompt }],
         temperature: 0.7,
         max_tokens: 1500,
       });
 
-      return response.choices[0].message.content || 'Unable to generate report';
+      return response.choices[0].message.content || "Unable to generate report";
     } catch (error) {
-      this.logger.error('Failed to generate monthly report:', error);
+      this.logger.error("Failed to generate monthly report:", error);
       throw error;
     }
   }
@@ -266,7 +272,7 @@ Make it conversational, insightful, and actionable. Use emojis sparingly for vis
     // Get streaming services data
     const services = await this.prisma.streamingService.findMany({
       where: {
-        category: 'Streaming',
+        category: "Streaming",
         active: true,
       },
     });
@@ -293,14 +299,16 @@ Be concise and helpful.
     try {
       const response = await this.openai.chat.completions.create({
         model: this.model,
-        messages: [{ role: 'user', content: prompt }],
+        messages: [{ role: "user", content: prompt }],
         temperature: 0.5,
         max_tokens: 300,
       });
 
-      return response.choices[0].message.content || 'Unable to find information';
+      return (
+        response.choices[0].message.content || "Unable to find information"
+      );
     } catch (error) {
-      this.logger.error('Failed to find streaming content:', error);
+      this.logger.error("Failed to find streaming content:", error);
       throw error;
     }
   }
@@ -310,7 +318,7 @@ Be concise and helpful.
       where: { id: userId },
       include: {
         subscriptions: {
-          where: { status: 'ACTIVE' },
+          where: { status: "ACTIVE" },
           include: {
             usageLogs: {
               where: {
@@ -324,9 +332,10 @@ Be concise and helpful.
       },
     });
 
-    const underutilized = user?.subscriptions.filter(
-      (s) => (s.usageLogs?.length || 0) < 3 && s.amount > 10,
-    ) || [];
+    const underutilized =
+      user?.subscriptions.filter(
+        (s) => (s.usageLogs?.length || 0) < 3 && s.amount > 10,
+      ) || [];
 
     const recommendations = [];
 
@@ -339,11 +348,12 @@ Be concise and helpful.
         name: sub.name,
         monthlyCost,
         usage,
-        recommendation: usage === 0
-          ? 'Consider cancelling - not used this month'
-          : 'Low usage detected - review if still needed',
+        recommendation:
+          usage === 0
+            ? "Consider cancelling - not used this month"
+            : "Low usage detected - review if still needed",
         potentialSavings: monthlyCost,
-        priority: usage === 0 ? 'HIGH' : 'MEDIUM',
+        priority: usage === 0 ? "HIGH" : "MEDIUM",
       });
     }
 
@@ -358,7 +368,7 @@ Be concise and helpful.
       message:
         recommendations.length > 0
           ? `You could save up to $${totalPotentialSavings.toFixed(2)}/month by optimizing these subscriptions.`
-          : 'Great job! Your subscriptions are being used efficiently.',
+          : "Great job! Your subscriptions are being used efficiently.",
     };
   }
 
@@ -374,9 +384,9 @@ Subscriptions:
 ${subscriptions
   .map(
     (s) =>
-      `- ${s.name} ($${s.amount}/${s.billingCycle}) - Category: ${s.category?.name || 'None'}`,
+      `- ${s.name} ($${s.amount}/${s.billingCycle}) - Category: ${s.category?.name || "None"}`,
   )
-  .join('\n')}
+  .join("\n")}
     `.trim();
   }
 
@@ -421,29 +431,31 @@ Never make up information. If you need more data, ask the user.
       where: { id: userId },
       include: {
         subscriptions: {
-          where: { status: 'ACTIVE' },
+          where: { status: "ACTIVE" },
           take: 5,
         },
       },
     });
 
     const prompts = [
-      'Where can I watch Inception?',
-      'Am I overspending on subscriptions?',
-      'Which subscriptions should I cancel?',
-      'What\'s the cheapest way to watch anime?',
+      "Where can I watch Inception?",
+      "Am I overspending on subscriptions?",
+      "Which subscriptions should I cancel?",
+      "What's the cheapest way to watch anime?",
     ];
 
     if (user?.subscriptions && user.subscriptions.length > 3) {
-      prompts.push('Analyze my subscription spending');
-      prompts.push('Find duplicate services');
+      prompts.push("Analyze my subscription spending");
+      prompts.push("Find duplicate services");
     }
 
     if (user?.subscriptions && user.subscriptions.length === 0) {
-      prompts.splice(0, prompts.length, 
-        'How do I get started?',
-        'What subscriptions do people usually track?',
-        'Help me find the best streaming service',
+      prompts.splice(
+        0,
+        prompts.length,
+        "How do I get started?",
+        "What subscriptions do people usually track?",
+        "Help me find the best streaming service",
       );
     }
 
